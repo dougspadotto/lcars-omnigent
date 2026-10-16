@@ -10,6 +10,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/xterm.min.css">
+<script src="vendor/xterm.min.js"></script>
+<script src="vendor/addon-fit.min.js"></script>
 <style>
 :root{
   --black:#000;
@@ -548,7 +551,7 @@ details.exec.out{border-color:#1c2740}
             </div>
             <details id="livefeed" class="exec" style="margin:8px 0 0">
               <summary><span class="ename" style="color:var(--tangerine)">LIVE OUTPUT</span><span class="etag" id="livefeedState">DETACHED</span></summary>
-              <div class="targ" id="livefeedText" style="max-height:240px;overflow-y:auto"></div>
+              <div id="livefeedText" style="height:280px;padding:4px;background:#000;border-radius:0 0 8px 8px;overflow:hidden"></div>
             </details>
             <div class="msgs" id="msgs">
               <div class="msg"><div class="who system">SYSTEM</div><div class="body">Select a session in the folders to bind the console.</div></div>
@@ -1057,6 +1060,9 @@ function startLive(){
         const d = JSON.parse(ev.data);
         const s = state.sessions.find(x=>x.id===id);
         if(s && d.status){ s.status = d.status; setConStatus(s); }
+        if(state.current !== id) return;
+        if(d.status === "running"){ startTermFeed(id); }
+        else { stopTermFeed(); feedCollapse(); feedState((d.status||"idle").toUpperCase()); }
       }catch(e){}
     });
     es.onerror = ()=>{
@@ -1422,25 +1428,61 @@ function toggleRail(){
 $id("railTab").addEventListener("click", toggleRail);
 document.querySelector(".elbow-logo").addEventListener("click", toggleRail);
 
-/* ---------- live terminal feed (read-only WS attach) ---------- */
+/* ---------- live terminal feed : xterm.js over read-only WS attach ---------- */
+/* Live output is a main-session-only feature : sub-agent sessions never
+   attach, and the pane follows the turn (attach while running, detach and
+   collapse when it ends) so it never lingers over the transcript. */
+let feedTerm = null, feedFit = null;
+function isSubagentSession(s){
+  return /-subagent$/.test((s && s.labels && s.labels["omnigent.wrapper"]) || "");
+}
+function feedState(t){ const el = $id("livefeedState"); if(el) el.textContent = t; }
+function feedCollapse(){ const box = $id("livefeed"); if(box) box.open = false; }
 function stopTermFeed(){
   if(state.termWs){
     try{ state.termWs.onclose = null; state.termWs.close(); }catch(e){}
     state.termWs = null;
   }
+  if(feedTerm){ try{ feedTerm.dispose(); }catch(e){} feedTerm = null; feedFit = null; }
   state.feedBuf = "";
-  const box = $id("livefeedText");
-  if(box) box.textContent = "";
 }
-function feedState(t){ const el = $id("livefeedState"); if(el) el.textContent = t; }
-function startTermFeed(id){
+function feedWrite(data){
+  if(!feedTerm) return;
+  feedTerm.write(data);
+  const box = $id("livefeed");
+  if(!box.open){ box.open = true; setTimeout(fitFeed, 50); }
+}
+function fitFeed(){
+  if(feedFit && $id("livefeed").open){
+    try{ feedFit.fit(); }catch(e){}
+  }
+}
+function startTermFeed(id, force){
   stopTermFeed();
+  const s = state.sessions.find(x=>x.id===id);
+  if(!s) return;
+  if(isSubagentSession(s)){ feedCollapse(); feedState("MAIN SESSION ONLY"); return; }
+  if(!force && s.status !== "running"){ feedCollapse(); feedState("IDLE"); return; }
   feedState("CONNECTING…");
+  const host = $id("livefeedText");
+  if(window.Terminal){
+    try{
+      feedTerm = new window.Terminal({
+        fontSize: 11, fontFamily: '"SF Mono", Menlo, monospace',
+        theme: { background: "#000000", foreground: "#c8d4f0" },
+        convertEol: false, cursorBlink: false, disableStdin: true, scrollback: 2000,
+      });
+      feedFit = new window.FitAddon.FitAddon();
+      feedTerm.loadAddon(feedFit);
+      feedTerm.open(host);
+      setTimeout(fitFeed, 30);
+    }catch(e){ feedTerm = null; }
+  }
   api(`/sessions/${id}/resources/terminals`).then(d=>{
     if(state.current !== id) return;
     const terms = d.data || d.terminals || [];
-    const t = terms.find(x => (x.resource && x.resource.type === "terminal")) || terms[0];
-    if(!t){ feedState("NO TERMINAL"); return; }
+    const t = terms.find(x => (x.metadata||{}).session_key === "main" || /:main$/.test(x.name||""));
+    if(!t){ feedState("NO MAIN TERMINAL"); return; }
     const meta = t.metadata || {};
     const tid = t.resource_id || t.id || (t.resource && t.resource.id);
     /* prefer the runner's loopback direct-attach listener (token in query,
@@ -1466,37 +1508,31 @@ function startTermFeed(id){
     ws.onopen = ()=>{ if(state.current===id) feedState("LIVE"); };
     ws.onmessage = ev=>{
       if(state.current !== id) return;
-      let txt = "";
       if(typeof ev.data === "string"){
         try{
           const j = JSON.parse(ev.data);
-          if(typeof j.data === "string") txt = j.data;
-          else if(typeof j.output === "string") txt = j.output;
-          else if(typeof j.chunk === "string") txt = j.chunk;
-          else if(j.type) return;
-          else txt = "";
-        }catch(e){ txt = ev.data; }
+          if(typeof j.data === "string") feedWrite(j.data);
+          else if(typeof j.output === "string") feedWrite(j.output);
+          else if(typeof j.chunk === "string") feedWrite(j.chunk);
+          /* other frames (acks, heartbeats) are ignored */
+        }catch(e){ feedWrite(ev.data); }
       }else{
-        txt = new TextDecoder().decode(new Uint8Array(ev.data));
+        feedWrite(new Uint8Array(ev.data));
       }
-      txt = txt
-        .replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, "")
-        .replace(/\x1b\[[0-9;:<>=?]*[A-Za-z]/g, "")
-        .replace(/\x1b[()][A-B0-9]/g, "")
-        .replace(/\x1b[a-zA-Z]/g, "")
-        .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "")
-        .replace(/\r/g, "");
-      if(!txt.trim()) return;
-      state.feedBuf = ((state.feedBuf||"") + txt).slice(-24000);
-      const box = $id("livefeedText");
-      box.textContent = state.feedBuf;
-      box.scrollTop = box.scrollHeight;
-      $id("livefeed").open = true;
     };
     ws.onclose = ()=>{ feedState("DETACHED"); if(state.current===id) setTimeout(()=>{ if(state.current===id) startTermFeed(id); }, 4000); };
     ws.onerror = ()=>feedState("ERROR");
   }).catch(()=>feedState("NO TERMINAL"));
 }
+$id("livefeed").addEventListener("toggle", ()=>{
+  if($id("livefeed").open){
+    if(!state.termWs && state.current) startTermFeed(state.current, true);
+    setTimeout(fitFeed, 40);
+  } else if(state.termWs){
+    stopTermFeed(); feedState("DETACHED");
+  }
+});
+window.addEventListener("resize", fitFeed);
 
 /* ---------- clocks ---------- */
 function pad(n){return String(n).padStart(2,"0")}
