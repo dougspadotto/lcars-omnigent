@@ -869,6 +869,7 @@ function renderSessions(){
 /* ---------- console / transcript ---------- */
 function stopLive(){
   if(state.pollTimer){ clearInterval(state.pollTimer); state.pollTimer = null; }
+  if(state.pollRetry){ clearTimeout(state.pollRetry); state.pollRetry = null; }
   if(state.es){ state.es.close(); state.es = null; }
   stopTermFeed();
 }
@@ -897,6 +898,7 @@ async function bindSession(id){
   $id("msgs").innerHTML = `<div class="msg"><div class="who system">SYSTEM</div><div class="body">LOADING TRANSCRIPT&#8230;</div></div>`;
   state.lastItems = new Map();
   state.pendingUser = null;
+  state.forceScroll = true;
   renderSessions();
   await pollTranscript();
   startLive();
@@ -923,6 +925,7 @@ async function pollTranscript(){
        a re-bound long session showing a transcript hundreds of items stale */
     const d = await api(`/sessions/${state.current}/items?limit=200&order=desc`);
     const items = (d.data || []).reverse();
+    if(state.pollRetry){ clearTimeout(state.pollRetry); state.pollRetry = null; }
     const prev = state.lastItems;
     /* merge, never replace : the SSE stream can deliver a fresh item
        (e.g. the final message at turn end) before the batch mirror has
@@ -934,8 +937,12 @@ async function pollTranscript(){
     renderTranscript([...next.values()].sort((a,b)=>(a.created_at||0)-(b.created_at||0)));
     if(added > 0 && prev.size > 0) sfx.live();
   }catch(e){
+    /* bridge down : keep retrying instead of dead-ending the console */
     if($id("msgs").children.length <= 1)
-      $id("msgs").innerHTML = `<div class="msg"><div class="who system">SYSTEM</div><div class="body">TRANSCRIPT ERROR : ${esc(e.message)}</div></div>`;
+      $id("msgs").innerHTML = `<div class="msg"><div class="who system">SYSTEM</div><div class="body">BRIDGE OFFLINE : RETRYING&#8230;</div></div>`;
+    if(state.current && !state.pollRetry){
+      state.pollRetry = setTimeout(()=>{ state.pollRetry = null; pollTranscript(); }, 3000);
+    }
   }
 }
 
@@ -980,6 +987,10 @@ function renderTranscript(items){
      (reasoning, tool calls and outputs) is what the LIVE OUTPUT pane
      shows while running, so it never pours back in when the turn ends */
   const box = $id("msgs");
+  /* follow the tail only when the reader is already there : scrolling up
+     to read must not be yanked back by poll/SSE re-renders */
+  const stick = state.forceScroll || (box.scrollHeight - box.scrollTop - box.clientHeight < 80);
+  state.forceScroll = false;
   box.innerHTML = "";
   let last = null;
   items.forEach(i => {
@@ -1032,7 +1043,7 @@ function renderTranscript(items){
     }
   }
   if(askStable && askCardEl) box.appendChild(askCardEl);
-  box.scrollTop = box.scrollHeight;
+  if(stick) box.scrollTop = box.scrollHeight;
 }
 
 function startLive(){
@@ -1110,6 +1121,7 @@ async function send(){
     sfx.transmit();
     /* echo immediately : the mirror can lag the batched items behind the send */
     state.pendingUser = text;
+    state.forceScroll = true;
     renderTranscript([...state.lastItems.values()].sort((a,b)=>(a.created_at||0)-(b.created_at||0)));
     setTimeout(pollTranscript, 800);
   }catch(e){
