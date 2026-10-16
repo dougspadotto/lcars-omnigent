@@ -1138,6 +1138,7 @@ async function send(){
   if(!text) return;
   box.value = "";
   growCmd();
+  cmdHistPos = null;
   if(!state.current){
     sysLine("NO SESSION BOUND : SELECT ONE IN THE SESSION REGISTRY FIRST.");
     return;
@@ -1955,9 +1956,41 @@ function growCmd(){
   cmdBox.style.height = "auto";
   cmdBox.style.height = Math.min(cmdBox.scrollHeight, 140) + "px";
 }
+/* command history for this session : the user messages already in the
+   transcript, so it survives re-binds and includes CLI/web sends */
+function commandHistory(){
+  const arr = [...state.lastItems.values()]
+    .filter(i => i.type === "message" && i.role === "user")
+    .sort((a,b)=>(a.created_at||0)-(b.created_at||0))
+    .map(i => (i.content||[]).map(c => c.text || "").join("").trim())
+    .filter(Boolean);
+  if(state.pendingUser && !arr.includes(state.pendingUser)) arr.push(state.pendingUser);
+  return arr;
+}
+let cmdHistPos = null, cmdDraft = "";
 cmdBox.addEventListener("input", growCmd);
 cmdBox.addEventListener("keydown", e=>{
-  if(e.key === "Enter" && !e.shiftKey){ e.preventDefault(); send(); }
+  if(e.key === "Enter" && !e.shiftKey){ e.preventDefault(); send(); return; }
+  if(e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+  /* multiline navigation wins when the caret has lines to cross */
+  const pos = cmdBox.selectionStart;
+  if(e.key === "ArrowUp" && cmdBox.value.slice(0, pos).includes("\n")) return;
+  if(e.key === "ArrowDown" && cmdBox.value.slice(pos).includes("\n")) return;
+  const hist = commandHistory();
+  if(!hist.length) return;
+  e.preventDefault();
+  if(cmdHistPos === null){
+    if(e.key === "ArrowDown") return;
+    cmdDraft = cmdBox.value;
+    cmdHistPos = hist.length - 1;
+  } else {
+    cmdHistPos += (e.key === "ArrowUp" ? -1 : 1);
+    if(cmdHistPos >= hist.length){ cmdHistPos = null; cmdBox.value = cmdDraft; growCmd(); return; }
+    if(cmdHistPos < 0) cmdHistPos = 0;
+  }
+  cmdBox.value = hist[cmdHistPos];
+  growCmd();
+  cmdBox.selectionStart = cmdBox.selectionEnd = cmdBox.value.length;
 });
 $id("purgeBtn").addEventListener("click", purgeCurrent);
 
