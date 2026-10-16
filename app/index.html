@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LCARS : OMNIGENT ACCESS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --black:#000;
+  --peach:#FFCC99;
+  --amber:#FFCC66;
+  --orange:#FF9966;
+  --tangerine:#FF9900;
+  --coral:#CC6666;
+  --red:#DD4C4C;
+  --lavender:#CC99CC;
+  --periwinkle:#9999CC;
+  --blue:#99CCFF;
+  --iceblue:#6688CC;
+  --gold:#DDAA44;
+  --rail-w:186px;
+  --hdr-h:122px;
+  --ftr-h:46px;
+  --gutter:4px;
+  --arm:26px;
+  --font:"Antonio","Arial Narrow",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--black);
+  font-family:var(--font);
+  color:var(--black);
+  overflow:hidden;
+  user-select:none;
+}
+
+/* ===== FRAME GRID ===== */
+.frame{
+  height:100vh;
+  display:grid;
+  grid-template-columns:var(--rail-w) 1fr;
+  grid-template-rows:var(--hdr-h) 1fr var(--ftr-h);
+  gap:var(--gutter);
+  padding:var(--gutter);
+}
+
+/* ===== ELBOWS ===== */
+.elbow{position:relative;background:var(--peach);border-top-left-radius:var(--rail-w)}
+.elbow::after{
+  content:"";position:absolute;right:0;bottom:0;
+  width:calc(100% - var(--arm));height:calc(100% - var(--arm));
+  background:var(--black);border-top-left-radius:calc(var(--rail-w) - var(--arm));
+}
+.elbow-b{position:relative;background:var(--amber);border-bottom-left-radius:var(--rail-w)}
+.elbow-b::after{
+  content:"";position:absolute;right:0;top:0;
+  width:calc(100% - var(--arm));height:calc(100% - var(--arm));
+  background:var(--black);border-bottom-left-radius:calc(var(--rail-w) - var(--arm));
+}
+.elbow-logo{
+  position:absolute;right:38px;bottom:6px;width:84px;height:84px;z-index:2;
+}
+
+/* ===== HEADER ===== */
+.header{
+  background:var(--peach);
+  border-radius:0 30px 0 0;
+  display:flex;align-items:center;
+  padding:0 14px 0 20px;
+  gap:10px;
+  min-width:0;
+}
+.header .code{font-weight:700;font-size:15px;letter-spacing:.05em;opacity:.85;white-space:nowrap}
+.header .title{
+  font-weight:700;font-size:34px;letter-spacing:.02em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.header .spacer{flex:1}
+.header .sd{
+  background:var(--black);color:var(--peach);
+  font-weight:700;font-size:20px;letter-spacing:.06em;
+  border-radius:16px;padding:4px 16px;white-space:nowrap;
+}
+.header .sub{font-size:13px;font-weight:500;opacity:.75;white-space:nowrap}
+.newbtn{
+  background:var(--tangerine);color:#000;border:none;border-radius:16px;
+  font-family:var(--font);font-weight:700;font-size:16px;letter-spacing:.06em;
+  padding:7px 18px 5px;cursor:pointer;white-space:nowrap;
+}
+.newbtn:hover{filter:brightness(1.12)}
+.newbtn:active{filter:brightness(.85)}
+
+/* ===== RAIL ===== */
+.rail{display:flex;flex-direction:column;gap:var(--gutter);overflow:hidden}
+.btn{
+  font-family:var(--font);font-weight:700;font-size:15px;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--black);
+  border:none;cursor:pointer;text-align:right;
+  padding:7px 12px 5px;border-radius:18px;
+  line-height:1;white-space:nowrap;
+  transition:filter .08s;
+}
+.btn:hover{filter:brightness(1.18)}
+.btn:active{filter:brightness(.85)}
+.btn.active{outline:3px solid #fff;outline-offset:-3px}
+.btn .num{display:block;font-size:11px;font-weight:500;opacity:.7;text-align:left;letter-spacing:.1em}
+.rail .gapbar{height:8px;border-radius:5px;margin-top:auto}
+
+/* ===== MAIN DATA AREA ===== */
+.dataarea{
+  border:3px solid var(--iceblue);
+  border-radius:22px;
+  overflow:hidden;
+  position:relative;
+  background:#000;
+  display:flex;flex-direction:column;
+}
+.view{display:none;flex:1;min-height:0;flex-direction:column;overflow:hidden}
+.view.active{display:flex}
+
+.pill{
+  display:inline-block;border-radius:12px;padding:1px 10px 0;
+  font-size:12px;font-weight:700;letter-spacing:.06em;line-height:17px;
+}
+.st-running{background:var(--orange);color:#000}
+.st-idle{background:var(--periwinkle);color:#000}
+.st-failed{background:var(--red);color:#000}
+.st-other{background:#555;color:#000}
+
+/* ===== SESSIONS VIEW ===== */
+.sesswrap{display:flex;flex:1;min-height:0}
+.sessfilters{
+  width:196px;flex:0 0 auto;display:flex;flex-direction:column;gap:4px;
+  padding:10px 0 10px 10px;border-right:2px solid #333;margin-right:0;
+  overflow-y:auto;
+}
+.sessfilters::-webkit-scrollbar{width:6px}
+.sessfilters::-webkit-scrollbar-thumb{background:#333}
+.flabel{font-size:12px;font-weight:700;letter-spacing:.12em;color:var(--periwinkle);margin:6px 0 2px}
+.fbtn{
+  font-family:var(--font);font-weight:700;font-size:13px;color:var(--black);
+  border:none;border-radius:14px;padding:5px 10px 3px;cursor:pointer;text-align:right;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;
+}
+.fbtn:hover{filter:brightness(1.2)}
+.fbtn.sel{outline:3px solid #fff;outline-offset:-3px}
+.sessmain{flex:1;min-width:0;display:flex;flex-direction:column;padding:12px 14px 10px 14px}
+.sesshead{display:flex;align-items:baseline;gap:14px;margin-bottom:8px}
+.sesshead h2{font-size:22px;font-weight:700;color:var(--peach);letter-spacing:.03em}
+.sesshead .cnt{font-size:14px;color:var(--periwinkle);font-weight:500}
+table.sessions{width:100%;border-collapse:collapse;font-size:14px}
+table.sessions th{
+  text-align:left;color:var(--amber);font-size:12px;font-weight:700;letter-spacing:.12em;
+  border-bottom:2px solid #444;padding:4px 10px 5px;
+}
+table.sessions td{padding:6px 10px;border-bottom:1px solid #222;color:#ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
+table.sessions tr:hover td{background:#141420;cursor:pointer}
+table.sessions tr.sel td{background:#1c1c30}
+td.id{color:var(--blue);font-weight:500}
+td.agent{color:var(--lavender);font-weight:500}
+td.cost{text-align:right;color:var(--gold)}
+td.ws{color:#8a8fa8;font-size:13px}
+.pagerow{display:flex;gap:6px;align-items:center;margin-top:auto;padding-top:10px}
+.pagerow .btn{padding:5px 14px 3px;font-size:13px}
+.pagerow .info{color:var(--periwinkle);font-size:13px;font-weight:500;margin-left:auto}
+
+/* registries panel */
+.regwrap{display:none;flex:1;min-height:0;overflow-y:auto;padding:12px 14px}
+.regwrap.on{display:block}
+.regwrap::-webkit-scrollbar{width:8px}
+.regwrap::-webkit-scrollbar-thumb{background:#333;border-radius:4px}
+.rpanel{border:2px solid #2e3350;border-radius:14px;margin-bottom:14px;overflow:hidden}
+.rpanel .rhead{color:#000;font-weight:700;font-size:15px;letter-spacing:.08em;padding:5px 14px 3px;display:flex;justify-content:space-between}
+.rpanel .rhead .rc{font-size:12px;opacity:.8}
+.rrow{display:flex;gap:14px;padding:6px 14px;border-bottom:1px solid #171a28;font-size:13px;color:#dfe2f2;font-family:var(--mono)}
+.rrow:last-child{border-bottom:none}
+.rrow .rk{color:#6f77a0;flex:0 0 200px;font-family:var(--font);font-weight:700;font-size:12px;letter-spacing:.1em}
+.rrow .ok{color:#88BB88;font-weight:700}
+.rrow .bad{color:var(--red);font-weight:700}
+.regwrap .empty{color:#556;padding:18px 14px;font-family:var(--mono);font-size:13px}
+
+/* ===== CONSOLE VIEW ===== */
+.console{flex:1;min-height:0;display:flex;flex-direction:column;padding:10px 14px 8px}
+.consolehead{display:flex;align-items:center;gap:12px;padding-bottom:8px;border-bottom:2px solid #333}
+.consolehead .ct{font-weight:700;font-size:18px;color:var(--peach);letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.consolehead .cs{font-size:13px;color:#6f77a0;font-weight:500}
+.consolehead .sp{flex:1}
+.purgebtn{
+  font-family:var(--font);font-weight:700;font-size:12px;color:#000;background:var(--coral);
+  border:none;border-radius:12px;padding:4px 12px 2px;cursor:pointer;letter-spacing:.08em;
+}
+.purgebtn:hover{filter:brightness(1.2)}
+.msgs{flex:1;min-height:0;overflow-y:auto;padding-right:6px;margin-top:8px}
+.msgs::-webkit-scrollbar{width:8px}
+.msgs::-webkit-scrollbar-thumb{background:#333;border-radius:4px}
+.msg{display:flex;gap:12px;margin-bottom:10px}
+.msg .who{
+  flex:0 0 96px;text-align:right;font-weight:700;font-size:13px;letter-spacing:.08em;
+  padding-top:2px;
+}
+.who.user{color:var(--lavender)}
+.who.assistant{color:var(--amber)}
+.who.tool{color:var(--blue)}
+.who.toolout{color:#5a7ba6}
+.who.reasoning{color:#556080}
+.who.system{color:var(--coral)}
+.msg .body{flex:1;min-width:0;color:#dfe2f2;font-family:var(--mono);font-size:13px;line-height:1.45;user-select:text;white-space:pre-wrap;overflow-wrap:anywhere}
+.msg.reasoning .body{color:#7d88ad;font-style:italic}
+.toolbody{
+  border:1px solid #2a3a55;border-radius:10px;padding:7px 10px;background:#0a0e18;
+}
+.toolhead{font-family:var(--font);font-weight:700;font-size:12px;letter-spacing:.1em;color:var(--blue);margin-bottom:4px}
+.toolbody .targ{color:#9fb4d8;font-size:12px;max-height:120px;overflow:hidden}
+.cursor{display:inline-block;width:9px;height:15px;background:var(--orange);vertical-align:-2px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.inputrow{display:flex;gap:8px;align-items:stretch;padding-top:8px;border-top:2px solid #333}
+.inputframe{
+  flex:1;border:2px solid var(--iceblue);border-radius:18px;
+  display:flex;align-items:center;padding:0 14px;gap:10px;
+}
+.inputframe .prompt{color:var(--tangerine);font-weight:700;font-size:15px;letter-spacing:.05em;white-space:nowrap}
+.inputframe input{
+  flex:1;background:none;border:none;outline:none;color:#fff;
+  font-family:var(--mono);font-size:14px;
+}
+.sendbtn{
+  font-family:var(--font);font-weight:700;font-size:16px;color:#000;background:var(--tangerine);
+  border:none;border-radius:18px;padding:8px 22px 6px;cursor:pointer;letter-spacing:.05em;
+}
+.sendbtn:hover{filter:brightness(1.15)}
+
+/* ===== AGENTS VIEW ===== */
+.agentgrid{flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;padding:14px;align-content:start}
+.agentgrid::-webkit-scrollbar{width:8px}
+.agentgrid::-webkit-scrollbar-thumb{background:#333;border-radius:4px}
+.acard{border:2px solid #2e3350;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;background:#050508}
+.acard .ahead{
+  color:#000;font-weight:700;font-size:17px;letter-spacing:.04em;
+  padding:6px 14px 4px;display:flex;justify-content:space-between;align-items:baseline;
+}
+.acard .ahead .v{font-size:12px;opacity:.75}
+.acard .abody{padding:8px 14px 10px;font-size:13px;color:#c8cbe0;font-weight:500}
+.acard .row{display:flex;justify-content:space-between;gap:12px;padding:2.5px 0;border-bottom:1px solid #171a28}
+.acard .row .k{color:#6f77a0;letter-spacing:.1em;font-size:12px;font-weight:700}
+.acard .row .v2{color:#d8dbf0;text-align:right}
+.acard .launch{
+  margin:6px 12px 12px;text-align:center;font-weight:700;font-size:14px;color:#000;
+  border-radius:14px;padding:5px 0 3px;cursor:pointer;border:none;font-family:var(--font);
+}
+.acard .launch:hover{filter:brightness(1.15)}
+
+/* ===== STATUS VIEW ===== */
+.statusgrid{flex:1;min-height:0;display:flex;gap:14px;padding:14px;overflow:hidden}
+.spanel{border:2px solid #2e3350;border-radius:16px;display:flex;flex-direction:column;min-width:0}
+.spanel .shead{color:#000;font-weight:700;font-size:15px;letter-spacing:.08em;padding:5px 14px 3px;border-radius:13px 13px 0 0}
+.spanel .sbody{padding:10px 14px;font-size:13px;color:#c8cbe0;overflow-y:auto}
+.spanel .sbody::-webkit-scrollbar{width:6px}
+.spanel .sbody::-webkit-scrollbar-thumb{background:#333}
+.hostcol{flex:1.1}
+.metriccol{flex:1.3;display:flex;flex-direction:column}
+.metriccol .mgroup{margin-bottom:14px}
+.mrow{display:flex;align-items:center;gap:10px;margin-bottom:7px}
+.mrow .mname{flex:0 0 170px;font-size:13px;font-weight:500;color:#aab;letter-spacing:.06em;text-transform:uppercase}
+.mbar{flex:1;height:16px;border-radius:8px;background:#101018;position:relative;overflow:hidden}
+.mbar .fill{position:absolute;left:0;top:0;bottom:0;border-radius:8px;transition:width 1s ease}
+.mval{flex:0 0 64px;text-align:right;color:var(--gold);font-weight:700;font-size:14px}
+.runner{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #171a28}
+.dot{width:9px;height:9px;border-radius:50%;background:#88BB88;flex:0 0 auto}
+.dot.off{background:#666}
+.dot.live{animation:pulse 1.6s infinite}
+@keyframes pulse{50%{opacity:.25}}
+.runner .rn{color:#d8dbf0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.runner .rs{margin-left:auto;font-size:12px;letter-spacing:.1em;font-weight:700;color:#6f77a0;flex:0 0 auto}
+
+/* ===== FOOTER ===== */
+.footer{
+  background:var(--amber);border-radius:0 0 30px 0;
+  display:flex;align-items:center;gap:8px;padding:0 14px 0 16px;
+}
+.footer .seg{font-weight:700;font-size:15px;letter-spacing:.05em;white-space:nowrap}
+.footer .sp{flex:1}
+.footer .clockbox{
+  background:#000;color:var(--amber);border-radius:16px;padding:3px 16px 1px;
+  font-weight:700;font-size:17px;letter-spacing:.08em;white-space:nowrap;
+}
+.footer .snd{
+  background:#000;color:var(--amber);border:none;border-radius:16px;
+  font-family:var(--font);font-weight:700;font-size:13px;letter-spacing:.08em;
+  padding:5px 14px 3px;cursor:pointer;
+}
+.blinkblock{width:26px;height:16px;border-radius:8px;background:#000;animation:blink 1.2s steps(1) infinite}
+
+/* ===== PICKER MODAL ===== */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:50}
+.overlay.open{display:flex}
+.modal{
+  width:840px;max-width:94vw;max-height:88vh;background:#000;
+  border:3px solid var(--iceblue);border-radius:22px;overflow:hidden;
+  display:flex;flex-direction:column;
+}
+.mhead{
+  display:flex;align-items:center;gap:14px;padding:8px 16px 6px;
+  color:#000;font-weight:700;font-size:22px;letter-spacing:.05em;
+}
+.mhead .msub{font-size:13px;font-weight:500;opacity:.75}
+.mhead .sp{flex:1}
+.mclose{
+  background:#000;color:var(--peach);border:none;border-radius:14px;
+  font-family:var(--font);font-weight:700;font-size:13px;letter-spacing:.08em;
+  padding:5px 14px 3px;cursor:pointer;
+}
+.mbody{display:flex;gap:12px;padding:14px 16px;overflow:auto}
+.mcol{flex:1;border:2px solid #2e3350;border-radius:14px;padding:8px;min-width:0;display:flex;flex-direction:column;gap:4px}
+.mcol .mlist{display:flex;flex-direction:column;gap:4px;max-height:300px;overflow-y:auto}
+.pickb{
+  flex:0 0 auto;
+  font-family:var(--font);font-weight:700;font-size:13.5px;color:var(--black);
+  border:none;border-radius:13px;padding:6px 10px 4px;cursor:pointer;text-align:left;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;
+}
+.pickb:hover{filter:brightness(1.2)}
+.pickb.sel{outline:3px solid #fff;outline-offset:-3px}
+.pickb .pd{display:block;font-size:11px;font-weight:500;opacity:.7;letter-spacing:.08em}
+.mfoot{display:flex;align-items:center;gap:10px;padding:10px 16px 14px;border-top:2px solid #333}
+.mfoot input{
+  background:#0a0e18;border:2px solid var(--iceblue);border-radius:12px;color:#fff;
+  font-family:var(--mono);font-size:13px;padding:6px 10px;flex:1;min-width:0;outline:none;
+}
+.mfoot input:focus{border-color:var(--tangerine)}
+#pickBudget{flex:0 0 90px}
+.mfoot .btn{padding:7px 18px 5px;font-size:14px}
+.mfoot .flabel{margin:0}
+
+@media (max-width:900px){
+  .frame{grid-template-columns:130px 1fr}
+  :root{--rail-w:130px;--hdr-h:96px}
+  .header .title{font-size:24px}
+  .mbody{flex-direction:column}
+}
+</style>
+</head>
+<body>
+<div class="frame">
+
+  <div class="elbow">
+    <svg class="elbow-logo" viewBox="0 0 120 120" role="img" aria-label="United Federation of Agents">
+      <defs>
+        <path id="arcTop" d="M 19 60 A 41 41 0 0 1 101 60"/>
+        <g id="laurelL">
+          <path d="M 55.9 106.8 A 47 47 0 0 1 16.7 41.6" fill="none" stroke="#DDAA44" stroke-width="1.4"/>
+          <ellipse cx="55.9" cy="106.8" rx="2.3" ry="6" fill="#DDAA44" transform="rotate(30 55.9 106.8)"/>
+          <ellipse cx="41.6" cy="103.3" rx="2.3" ry="6" fill="#DDAA44" transform="rotate(-2 41.6 103.3)"/>
+          <ellipse cx="29.2" cy="95.5"  rx="2.3" ry="6" fill="#DDAA44" transform="rotate(66 29.2 95.5)"/>
+          <ellipse cx="19.7" cy="84.2"  rx="2.3" ry="6" fill="#DDAA44" transform="rotate(34 19.7 84.2)"/>
+          <ellipse cx="14.2" cy="70.6"  rx="2.3" ry="6" fill="#DDAA44" transform="rotate(102 14.2 70.6)"/>
+          <ellipse cx="13.2" cy="55.9"  rx="2.3" ry="6" fill="#DDAA44" transform="rotate(70 13.2 55.9)"/>
+          <ellipse cx="16.7" cy="41.6"  rx="2.3" ry="6" fill="#DDAA44" transform="rotate(138 16.7 41.6)"/>
+        </g>
+        <polygon id="star5" points="0,-26 7.6,-8 26.5,-8 11,3.5 16.9,21 0,10 -16.9,21 -11,3.5 -26.5,-8 -7.6,-8"/>
+      </defs>
+      <circle cx="60" cy="60" r="56" fill="#0e1a38" stroke="#DDAA44" stroke-width="3"/>
+      <circle cx="60" cy="60" r="50" fill="none" stroke="#33508F" stroke-width="1" opacity=".6"/>
+      <use href="#laurelL"/>
+      <use href="#laurelL" transform="translate(120 0) scale(-1 1)"/>
+      <g fill="#CFE0FF">
+        <circle cx="38" cy="36" r="1.5"/><circle cx="52" cy="30" r="1.1"/><circle cx="70" cy="34" r="1.7"/>
+        <circle cx="84" cy="44" r="1.2"/><circle cx="89" cy="58" r="1.5"/><circle cx="31" cy="52" r="1.3"/>
+        <circle cx="86" cy="74" r="1.1"/><circle cx="76" cy="88" r="1.4"/><circle cx="44" cy="88" r="1.2"/>
+      </g>
+      <text font-family="Antonio, sans-serif" font-size="7.5" letter-spacing=".4" font-weight="700" fill="#DDAA44">
+        <textPath href="#arcTop" startOffset="50%" text-anchor="middle">UNITED FEDERATION OF AGENTS</textPath>
+      </text>
+      <g transform="translate(60 64) rotate(-8)">
+        <use href="#star5" fill="#E84D8A" stroke="#E84D8A" stroke-width="10" stroke-linejoin="round"/>
+        <g fill="#B3246B">
+          <ellipse cx="0" cy="-13" rx="2.4" ry="3.2"/><ellipse cx="-4.5" cy="-4" rx="1.8" ry="2.4"/><ellipse cx="4.5" cy="-4" rx="1.8" ry="2.4"/>
+        </g>
+        <circle cx="-6" cy="6" r="3.3" fill="#111"/><circle cx="6" cy="6" r="3.3" fill="#111"/>
+        <circle cx="-5" cy="5" r="1.1" fill="#fff"/><circle cx="7" cy="5" r="1.1" fill="#fff"/>
+        <path d="M -4 12.5 Q 0 15.8 4 12.5" stroke="#111" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+      </g>
+      <g transform="translate(31 83) rotate(16) scale(0.42)">
+        <use href="#star5" fill="#3FA98C" stroke="#3FA98C" stroke-width="10" stroke-linejoin="round"/>
+        <circle cx="-6" cy="5" r="3.2" fill="#111"/><circle cx="6" cy="5" r="3.2" fill="#111"/>
+        <circle cx="-5" cy="4" r="1" fill="#fff"/><circle cx="7" cy="4" r="1" fill="#fff"/>
+        <path d="M -3.5 11.5 Q 0 14.5 3.5 11.5" stroke="#111" stroke-width="2" fill="none" stroke-linecap="round"/>
+      </g>
+    </svg>
+  </div>
+
+  <div class="header">
+    <span class="code">47&#8209;A</span>
+    <span class="title" id="hdrTitle">OMNIGENT ACCESS : SESSIONS</span>
+    <span class="spacer"></span>
+    <button class="newbtn" id="newBtn">NEW SESSION</button>
+    <span class="sub" id="hdrSub">CONNECTING&#8230;</span>
+    <span class="sd" id="stardate">SD &#8212;&#8212;</span>
+  </div>
+
+  <nav class="rail">
+    <button class="btn active" data-view="sessions" style="background:var(--lavender)">
+      <span class="num">01&#8209;000</span>SESSIONS
+    </button>
+    <button class="btn" data-view="console" style="background:var(--orange)">
+      <span class="num">02&#8209;000</span>CONSOLE
+    </button>
+    <button class="btn" data-view="agents" style="background:var(--periwinkle)">
+      <span class="num">03&#8209;000</span>AGENTS
+    </button>
+    <button class="btn" data-view="status" style="background:var(--blue)">
+      <span class="num">04&#8209;000</span>SYSTEM<br>STATUS
+    </button>
+    <div class="gapbar" style="background:var(--coral)"></div>
+    <button class="btn" id="regBtn" style="background:var(--gold)">
+      <span class="num">05&#8209;000</span>REGISTRIES
+    </button>
+    <div class="gapbar" style="background:var(--peach)"></div>
+    <button class="btn" id="refreshBtn" style="background:var(--amber)">
+      <span class="num">99&#8209;000</span>REFRESH
+    </button>
+  </nav>
+
+  <main class="dataarea">
+
+    <!-- SESSIONS -->
+    <section class="view active" id="view-sessions">
+      <div class="sesswrap">
+        <div class="sessfilters" id="sessFilters">
+          <div id="colFolders">
+            <div class="flabel">OMNIGENT FOLDERS</div>
+            <div id="folderList" style="display:flex;flex-direction:column;gap:4px"></div>
+          </div>
+          <div id="colRegistries" style="margin-top:auto">
+            <div class="flabel">REGISTRIES</div>
+            <button class="fbtn" data-reg="scheduled" style="background:var(--coral)">SCHEDULED</button>
+            <button class="fbtn" data-reg="policies" style="background:var(--periwinkle)">POLICIES</button>
+            <button class="fbtn" data-reg="usage" style="background:var(--gold)">USAGE</button>
+          </div>
+        </div>
+        <div class="sessmain">
+          <div class="sesshead" id="sessHead">
+            <h2>SESSION REGISTRY</h2>
+            <span class="cnt" id="sessCnt">LOADING&#8230;</span>
+          </div>
+          <div id="sessTableWrap" style="display:flex;flex-direction:column;flex:1;min-height:0">
+            <table class="sessions">
+              <thead><tr>
+                <th>SESSION</th><th>TITLE</th><th>AGENT</th><th>WORKSPACE</th><th>STATUS</th>
+                <th>MODEL</th><th style="text-align:right">COST</th><th>LAST ACTIVITY</th>
+              </tr></thead>
+              <tbody id="sessBody"></tbody>
+            </table>
+            <div class="pagerow">
+              <span class="info" id="pageInfo"></span>
+            </div>
+          </div>
+          <div class="regwrap" id="regPanel"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONSOLE -->
+    <section class="view" id="view-console">
+      <div class="console">
+        <div class="consolehead">
+          <span class="ct" id="conTitle">NO SESSION BOUND</span>
+          <span class="cs" id="conStatus"></span>
+          <span class="sp"></span>
+          <button class="purgebtn" id="purgeBtn">PURGE</button>
+        </div>
+        <div class="msgs" id="msgs">
+          <div class="msg"><div class="who system">SYSTEM</div><div class="body">Select a session in the registry to bind the console.</div></div>
+        </div>
+        <div class="inputrow">
+          <div class="inputframe">
+            <span class="prompt">&gt;</span>
+            <input id="cmdline" type="text" placeholder="ENTER DIRECTIVE : POSTS TO BOUND SESSION" autocomplete="off">
+          </div>
+          <button class="sendbtn" id="sendBtn">TRANSMIT</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- AGENTS -->
+    <section class="view" id="view-agents">
+      <div class="agentgrid" id="agentGrid"></div>
+    </section>
+
+    <!-- STATUS -->
+    <section class="view" id="view-status">
+      <div class="statusgrid">
+        <div class="spanel hostcol">
+          <div class="shead" style="background:var(--peach)">HOST : LOCAL RUNTIME</div>
+          <div class="sbody" id="hostBody">
+            <div class="mrow"><span class="mname">STATE</span><span class="mval" style="flex:1;text-align:left;color:#88BB88">LOADING&#8230;</span></div>
+          </div>
+        </div>
+        <div class="spanel metriccol">
+          <div class="shead" style="background:var(--periwinkle)">DIAGNOSTICS</div>
+          <div class="sbody" id="diagBody">
+            <div class="mrow"><span class="mname">STATE</span><span class="mval" style="flex:1;text-align:left;color:#88BB88">LOADING&#8230;</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <div class="elbow-b"></div>
+
+  <div class="footer">
+    <span class="seg">LCARS 47</span>
+    <div class="blinkblock"></div>
+    <span class="seg" id="ftrState">OMNIGENT BRIDGE : LINKING&#8230;</span>
+    <span class="sp"></span>
+    <button class="snd" id="sndBtn">AUDIO : OFF</button>
+    <span class="clockbox" id="clock">&#8212;:&#8212;</span>
+  </div>
+
+</div>
+
+<!-- NEW SESSION PICKER -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="mhead" style="background:var(--peach)">
+      <svg width="40" height="40" viewBox="0 0 120 120"><use href="#star5" transform="translate(60 64) rotate(-8)" fill="#E84D8A" stroke="#E84D8A" stroke-width="10" stroke-linejoin="round"/></svg>
+      <span>INITIATE NEW SESSION</span>
+      <span class="sp"></span>
+      <button class="mclose" id="mClose">DISMISS</button>
+    </div>
+    <div class="mbody">
+      <div class="mcol">
+        <div class="flabel">AGENT</div>
+        <div class="mlist" id="pickAgents"></div>
+      </div>
+      <div class="mcol">
+        <div class="flabel">MODEL</div>
+        <div class="mlist" id="pickModels"></div>
+      </div>
+      <div class="mcol">
+        <div class="flabel">REASONING EFFORT</div>
+        <div class="mlist" id="pickEffort"></div>
+      </div>
+    </div>
+    <div class="mfoot">
+      <span class="flabel">WORKSPACE</span>
+      <input id="pickWs" spellcheck="false">
+      <span class="flabel">BUDGET $</span>
+      <input id="pickBudget" value="10.00" spellcheck="false">
+      <span style="flex:1"></span>
+      <button class="btn" id="mCancel" style="background:var(--coral)">CANCEL</button>
+      <button class="btn" id="mLaunch" style="background:var(--tangerine)">LAUNCH</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   LCARS OMNIGENT BRIDGE : wired to local Omnigent server
+   All data via /api/* proxied with the local-server signature.
+   ============================================================ */
+const API = "/api/v1";
+const HOME = "~";
+
+const state = {
+  sessions: [],
+  usageById: {},     // id -> {cost, models}
+  agents: [],
+  host: null,
+  hostId: null,
+  models: [],        // catalog for current picker harness
+  current: null,     // bound session id for console
+  sessFilter: null,
+  regMode: false,
+  regSel: "scheduled",
+  pollTimer: null,
+  es: null,
+  lastItems: new Map(), // id -> item (current transcript)
+  offline: false,
+};
+
+/* ---------- helpers ---------- */
+function $id(x){return document.getElementById(x)}
+function esc(s){const d=document.createElement("div");d.textContent=s==null?"":String(s);return d.innerHTML}
+function short(id){return id ? id.slice(0,11) : ""}
+function ago(epoch){
+  if(!epoch) return "—";
+  const s = Date.now()/1000 - epoch;
+  if(s < 60) return "NOW";
+  if(s < 3600) return Math.floor(s/60) + " M AGO";
+  if(s < 86400) return Math.floor(s/3600) + " H AGO";
+  return new Date(epoch*1000).toISOString().slice(0,10);
+}
+function money(v){return v==null ? "—" : "$"+Number(v).toFixed(2)}
+function wsOf(sess){
+  try{
+    const c = JSON.parse(sess.labels["omnigent.composer_context.v1.0"] || "{}");
+    return (c.working_directory && c.working_directory.path) || "";
+  }catch(e){ return ""; }
+}
+function shortWs(p){
+  if(!p) return "—";
+  return p.replace(/^\/Users\/[^/]+/, "~").replace(/^~\/code\//,"").replace(/^~\//,"");
+}
+function modelOf(sess){
+  const u = state.usageById[sess.id];
+  if(u && u.models){
+    const k = Object.keys(u.models)[0];
+    if(k) return k.replace("system.ai.","");
+  }
+  return "—";
+}
+function costOf(sess){
+  const u = state.usageById[sess.id];
+  return u ? u.cost_usd : null;
+}
+function pill(status){
+  const cls = ["running","idle","failed"].includes(status) ? "st-"+status : "st-other";
+  return `<span class="pill ${cls}">${esc((status||"unknown").toUpperCase())}</span>`;
+}
+async function api(path, opts={}){
+  const r = await fetch(API + path, Object.assign({headers:{"Content-Type":"application/json"}}, opts));
+  if(!r.ok){
+    let msg = r.status;
+    try{ const j = await r.json(); msg = j.detail || j.error || msg; }catch(e){}
+    throw new Error(typeof msg === "string" ? msg : r.status + " error");
+  }
+  const ct = r.headers.get("content-type")||"";
+  return ct.includes("json") ? r.json() : r.text();
+}
+function beep(freq){
+  if(!state.sndOn) return;
+  state.actx = state.actx || new (window.AudioContext||window.webkitAudioContext)();
+  const o = state.actx.createOscillator(), g = state.actx.createGain();
+  o.type="square"; o.frequency.value=freq;
+  g.gain.setValueAtTime(0.06,state.actx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.0001,state.actx.currentTime+0.09);
+  o.connect(g); g.connect(state.actx.destination);
+  o.start(); o.stop(state.actx.currentTime+0.1);
+}
+
+/* ---------- boot ---------- */
+async function boot(){
+  try{
+    await refreshAll();
+    state.offline = false;
+    $id("ftrState").textContent = "ACCESS GRANTED : OMNIGENT BRIDGE";
+    $id("hdrSub").textContent = state.host ? ("HOST " + (state.host.name||"").toUpperCase().slice(0,24)) : "HOST LOCAL";
+  }catch(e){
+    state.offline = true;
+    $id("ftrState").textContent = "BRIDGE DOWN : " + e.message;
+    $id("hdrSub").textContent = "OFFLINE";
+    $id("sessCnt").textContent = "OMNIGENT SERVER UNREACHABLE ON 127.0.0.1:6767";
+  }
+  setInterval(() => { if(!state.offline) refreshSessions().catch(()=>{}); }, 15000);
+}
+
+async function refreshAll(){
+  const [sessions, usage, agents, hosts] = await Promise.all([
+    api("/sessions?limit=200"),
+    api("/usage"),
+    api("/agents"),
+    api("/hosts"),
+  ]);
+  state.sessions = (sessions.data || []).sort((a,b)=>(b.updated_at||0)-(a.updated_at||0));
+  state.usageById = {};
+  (usage.sessions || []).forEach(u => state.usageById[u.id] = u);
+  state.agents = agents.data || [];
+  state.host = (hosts.hosts || [])[0] || null;
+  state.hostId = state.host ? state.host.host_id : null;
+  renderSessions();
+  renderFolders();
+  renderAgents();
+  renderStatus();
+  if(state.regMode) renderRegistry(state.regSel);
+}
+
+async function refreshSessions(){
+  const [sessions, usage] = await Promise.all([api("/sessions?limit=200"), api("/usage")]);
+  state.sessions = (sessions.data || []).sort((a,b)=>(b.updated_at||0)-(a.updated_at||0));
+  state.usageById = {};
+  (usage.sessions || []).forEach(u => state.usageById[u.id] = u);
+  renderSessions();
+  renderFolders();
+  if(state.current) pollTranscript();
+}
+
+/* ---------- sessions view ---------- */
+function renderSessions(){
+  const rows = state.sessions.filter(s => !state.sessFilter || wsOf(s) === state.sessFilter);
+  const tb = $id("sessBody");
+  tb.innerHTML = "";
+  rows.slice(0, 60).forEach(s => {
+    const tr = document.createElement("tr");
+    if(state.current === s.id) tr.classList.add("sel");
+    tr.innerHTML =
+      `<td class="id">${esc(short(s.id))}</td>`+
+      `<td>${esc(s.title || "(untitled)")}</td>`+
+      `<td class="agent">${esc(s.agent_name||"—")}</td>`+
+      `<td class="ws">${esc(shortWs(wsOf(s)))}</td>`+
+      `<td>${pill(s.status)}</td>`+
+      `<td>${esc(modelOf(s))}</td>`+
+      `<td class="cost">${esc(money(costOf(s)))}</td>`+
+      `<td>${esc(ago(s.updated_at))}</td>`;
+    tr.addEventListener("click", () => bindSession(s.id));
+    tb.appendChild(tr);
+  });
+  $id("sessCnt").textContent =
+    `${state.sessions.length} CONVERSATIONS LIVE` + (state.sessFilter ? ` : FILTER ${shortWs(state.sessFilter)}` : "");
+  $id("pageInfo").textContent = `SHOWING ${Math.min(rows.length,60)} OF ${rows.length} : LIVE VIA /V1/SESSIONS`;
+}
+
+function renderFolders(){
+  const counts = {};
+  state.sessions.forEach(s => {
+    const ws = wsOf(s);
+    if(ws) counts[ws] = (counts[ws]||0)+1;
+  });
+  const list = $id("folderList");
+  list.innerHTML = "";
+  Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,14).forEach(([ws,n])=>{
+    const b = document.createElement("button");
+    b.className = "fbtn" + (state.sessFilter===ws ? " sel" : "");
+    b.style.background = "var(--periwinkle)";
+    b.textContent = `${shortWs(ws)} : ${n}`;
+    b.title = ws;
+    b.addEventListener("click", ()=>{
+      state.sessFilter = state.sessFilter===ws ? null : ws;
+      renderFolders(); renderSessions(); beep(480);
+    });
+    list.appendChild(b);
+  });
+}
+
+/* ---------- console / transcript ---------- */
+function stopLive(){
+  if(state.pollTimer){ clearInterval(state.pollTimer); state.pollTimer = null; }
+  if(state.es){ state.es.close(); state.es = null; }
+}
+
+async function bindSession(id){
+  const s = state.sessions.find(x=>x.id===id);
+  if(!s) return;
+  state.current = id;
+  stopLive();
+  switchView("console");
+  $id("conTitle").textContent = (s.title || "(untitled)") + " : " + short(id);
+  $id("conStatus").textContent = (s.status||"").toUpperCase() + " : " + (s.agent_name||"") + " : " + shortWs(wsOf(s));
+  $id("msgs").innerHTML = `<div class="msg"><div class="who system">SYSTEM</div><div class="body">LOADING TRANSCRIPT&#8230;</div></div>`;
+  state.lastItems = new Map();
+  await pollTranscript();
+  startLive();
+  beep(620);
+}
+
+async function pollTranscript(){
+  if(!state.current) return;
+  try{
+    const d = await api(`/sessions/${state.current}/items?limit=200`);
+    const items = d.data || [];
+    const prev = state.lastItems;
+    const next = new Map();
+    items.forEach(i => next.set(i.id, i));
+    const added = items.filter(i => !prev.has(i.id)).length;
+    state.lastItems = next;
+    renderTranscript(items);
+    if(added > 0 && prev.size > 0) beep(520);
+  }catch(e){
+    if($id("msgs").children.length <= 1)
+      $id("msgs").innerHTML = `<div class="msg"><div class="who system">SYSTEM</div><div class="body">TRANSCRIPT ERROR : ${esc(e.message)}</div></div>`;
+  }
+}
+
+function renderTranscript(items){
+  const box = $id("msgs");
+  box.innerHTML = "";
+  let last = null;
+  items.forEach(i => {
+    const t = i.type;
+    if(t === "message"){
+      const role = i.role;
+      const parts = (i.content||[]).map(c => c.text || c.transcript || "").filter(Boolean);
+      const text = parts.join("\n").trim();
+      if(!text) return;
+      const div = document.createElement("div");
+      if(role === "user"){
+        div.className = "msg";
+        div.innerHTML = `<div class="who user">USER</div><div class="body"></div>`;
+      }else{
+        div.className = "msg";
+        div.innerHTML = `<div class="who assistant">OMNIGENT</div><div class="body"></div>`;
+        last = div;
+      }
+      div.querySelector(".body").textContent = text;
+      box.appendChild(div);
+    }
+    else if(t === "reasoning"){
+      const txt = (i.content||[]).map(c=>c.text||c.summary||"").filter(Boolean).join(" ").trim();
+      if(!txt) return;
+      const div = document.createElement("div");
+      div.className = "msg reasoning";
+      div.innerHTML = `<div class="who reasoning">REASON</div><div class="body"></div>`;
+      div.querySelector(".body").textContent = txt.slice(0, 600);
+      box.appendChild(div);
+    }
+    else if(t === "function_call"){
+      const div = document.createElement("div");
+      div.className = "msg";
+      let args = i.arguments || "";
+      try{ args = JSON.stringify(JSON.parse(args), null, 1); }catch(e){}
+      div.innerHTML = `<div class="who tool">EXEC</div><div class="body"><div class="toolbody"><div class="toolhead">${esc(i.name||"tool")}</div><div class="targ"></div></div></div>`;
+      div.querySelector(".targ").textContent = String(args).slice(0, 900);
+      box.appendChild(div);
+    }
+    else if(t === "function_call_output"){
+      const out = typeof i.output === "string" ? i.output : JSON.stringify(i.output ?? "");
+      if(!out.trim()) return;
+      const div = document.createElement("div");
+      div.className = "msg";
+      div.innerHTML = `<div class="who toolout">EXEC&#160;OUT</div><div class="body"><div class="toolbody"><div class="targ"></div></div></div>`;
+      div.querySelector(".targ").textContent = out.slice(0, 700);
+      box.appendChild(div);
+    }
+    else if(t && t.includes("error")){
+      const div = document.createElement("div");
+      div.className = "msg";
+      div.innerHTML = `<div class="who system">ERROR</div><div class="body"></div>`;
+      div.querySelector(".body").textContent = JSON.stringify(i).slice(0,500);
+      box.appendChild(div);
+    }
+  });
+  if(last){
+    last.querySelector(".body").insertAdjacentHTML("beforeend", `<span class="cursor"></span>`);
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
+function startLive(){
+  state.pollTimer = setInterval(()=>pollTranscript(), 8000);
+  try{
+    const es = new EventSource(`/api/v1/sessions/${state.current}/stream`);
+    state.es = es;
+    es.onmessage = ev => {
+      try{
+        const d = JSON.parse(ev.data);
+        const item = d.item || d.data && d.data.item;
+        if(item && item.id){
+          state.lastItems.set(item.id, item);
+          renderTranscript([...state.lastItems.values()].sort((a,b)=>(a.created_at||0)-(b.created_at||0)));
+        }
+      }catch(e){}
+    };
+    es.onerror = () => { es.close(); state.es = null; };
+  }catch(e){}
+}
+
+/* transmit */
+async function send(){
+  const box = $id("cmdline");
+  const text = box.value.trim();
+  if(!text) return;
+  box.value = "";
+  if(!state.current){
+    sysLine("NO SESSION BOUND : SELECT ONE IN THE SESSION REGISTRY FIRST.");
+    return;
+  }
+  const s = state.sessions.find(x=>x.id===state.current);
+  sysLine("DISPATCHING DIRECTIVE TO RUNNER" + (s && s.status==="running" ? "" : " : WARNING : SESSION IS " + (s?s.status:"?").toUpperCase()));
+  try{
+    await api(`/sessions/${state.current}/events`, {
+      method: "POST",
+      body: JSON.stringify({type:"message", data:{role:"user", content:[{type:"input_text", text}]}}),
+    });
+    beep(880);
+    setTimeout(pollTranscript, 800);
+  }catch(e){
+    sysLine("TRANSMISSION FAILED : " + e.message);
+    beep(220);
+  }
+}
+function sysLine(text){
+  const div = document.createElement("div");
+  div.className = "msg";
+  div.innerHTML = `<div class="who system">SYSTEM</div><div class="body"></div>`;
+  div.querySelector(".body").textContent = text;
+  $id("msgs").appendChild(div);
+  $id("msgs").scrollTop = $id("msgs").scrollHeight;
+}
+
+/* purge current session */
+async function purgeCurrent(){
+  if(!state.current) return;
+  const s = state.sessions.find(x=>x.id===state.current);
+  if(!confirm("PURGE SESSION " + short(state.current) + ((s&&s.title) ? " : "+s.title : "") + " ? THIS DELETES IT FROM THE OMNIGENT STORE.")) return;
+  try{
+    await api(`/sessions/${state.current}`, {method:"DELETE"});
+    sysLine("SESSION PURGED : " + short(state.current));
+    stopLive();
+    state.current = null;
+    $id("conTitle").textContent = "NO SESSION BOUND";
+    await refreshSessions();
+  }catch(e){
+    sysLine("PURGE FAILED : " + e.message);
+  }
+}
+
+/* ---------- registries ---------- */
+const REG_DEFS = {
+  scheduled: {head:"SCHEDULED TASKS", color:"var(--coral)", load: loadScheduled},
+  policies:  {head:"POLICIES", color:"var(--periwinkle)", load: loadPolicies},
+  usage:     {head:"USAGE LEDGER", color:"var(--gold)", load: loadUsage},
+};
+async function renderRegistry(key){
+  const R = REG_DEFS[key];
+  const p = $id("regPanel");
+  p.classList.add("on");
+  p.innerHTML = `<div class="rpanel"><div class="rhead" style="background:${R.color}"><span>${R.head}</span><span class="rc">LIVE</span></div><div class="empty">LOADING&#8230;</div></div>`;
+  try{ await R.load(p.querySelector(".rpanel")); }
+  catch(e){ p.querySelector(".empty").textContent = "LOAD FAILED : " + e.message; }
+}
+async function loadScheduled(panel){
+  const d = await api("/scheduled-tasks");
+  const tasks = d.scheduled_tasks || d.data || [];
+  if(!tasks.length){ panel.insertAdjacentHTML("beforeend", `<div class="empty">NO SCHEDULED TASKS REGISTERED. CREATE VIA OMNIGENT CLI OR SYS_SCHEDULED_TASK_CREATE.</div>`); return; }
+  panel.insertAdjacentHTML("beforeend", tasks.map(t =>
+    `<div class="rrow"><span class="rk">${esc(t.name||short(t.id||t.scheduled_task_id))}</span><span style="flex:1">${esc(t.rrule||t.cron||"")}</span><span class="${t.state==="paused"?"bad":"ok"}">${esc((t.state||"active").toUpperCase())}</span></div>`).join(""));
+}
+async function loadPolicies(panel){
+  const d = await api("/policies");
+  const pol = d.data || d.policies || [];
+  if(!pol.length){ panel.insertAdjacentHTML("beforeend", `<div class="empty">NO SESSION POLICIES REGISTERED.</div>`); return; }
+  panel.insertAdjacentHTML("beforeend", pol.map(p =>
+    `<div class="rrow"><span class="rk">${esc(p.name||short(p.id||p.policy_id))}</span><span style="flex:1">${esc((p.description||"").slice(0,90))}</span><span class="ok">${esc((p.kind||p.handler||"policy").toUpperCase().slice(0,20))}</span></div>`).join(""));
+}
+async function loadUsage(panel){
+  const u = await api("/usage");
+  let html = `<div class="rrow"><span class="rk">COST TODAY</span><span style="flex:1"></span><span class="ok">${money(u.cost_today)}</span></div>`+
+    `<div class="rrow"><span class="rk">LAST 7 DAYS</span><span style="flex:1"></span><span class="ok">${money(u.cost_last_7d)}</span></div>`+
+    `<div class="rrow"><span class="rk">LAST 30 DAYS</span><span style="flex:1"></span><span class="ok">${money(u.cost_last_30d)}</span></div>`+
+    `<div class="rrow"><span class="rk">ALL TIME</span><span style="flex:1"></span><span class="ok">${money(u.total_cost_usd)}</span></div>`+
+    `<div class="rrow"><span class="rk" style="color:var(--amber)">TOP SESSIONS (30D)</span></div>`;
+  const top = (u.sessions||[]).sort((a,b)=>(b.cost_usd||0)-(a.cost_usd||0)).slice(0,8);
+  html += top.map(s => `<div class="rrow"><span class="rk">${esc((s.title||short(s.id)).slice(0,32))}</span><span style="flex:1;color:#6f77a0">${esc(Object.keys(s.models||{}).join(", ").replace(/system.ai./g,"").slice(0,60))}</span><span class="ok">${money(s.cost_usd)}</span></div>`).join("");
+  panel.insertAdjacentHTML("beforeend", html);
+}
+
+/* registries rail toggle */
+const regBtn = $id("regBtn");
+regBtn.addEventListener("click", ()=>{
+  if(state.regMode){
+    document.querySelector('.btn[data-view="sessions"]').click();
+    return;
+  }
+  state.regMode = true;
+  document.querySelectorAll(".rail .btn").forEach(x=>x.classList.remove("active"));
+  regBtn.classList.add("active");
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  $id("view-sessions").classList.add("active");
+  $id("colFolders").style.display = "none";
+  $id("sessTableWrap").style.display = "none";
+  $id("sessHead").style.display = "none";
+  renderRegistry(state.regSel);
+  $id("hdrTitle").textContent = "OMNIGENT ACCESS : REGISTRIES";
+  beep(560);
+});
+
+document.querySelectorAll("#colRegistries .fbtn").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    state.regSel = b.dataset.reg;
+    document.querySelectorAll("#colRegistries .fbtn").forEach(x=>x.classList.toggle("sel", x===b));
+    if(!state.regMode) regBtn.click();
+    else renderRegistry(state.regSel);
+    beep(500);
+  });
+});
+
+/* ---------- view switching ---------- */
+const titles = {sessions:"OMNIGENT ACCESS : SESSIONS",console:"OMNIGENT ACCESS : CONSOLE",agents:"OMNIGENT ACCESS : AGENT REGISTRY",status:"OMNIGENT ACCESS : SYSTEM STATUS"};
+function switchView(v){
+  document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));
+  $id("view-"+v).classList.add("active");
+}
+document.querySelectorAll(".rail .btn[data-view]").forEach(b=>{
+  b.addEventListener("click",()=>{
+    document.querySelectorAll(".rail .btn").forEach(x=>x.classList.remove("active"));
+    b.classList.add("active");
+    switchView(b.dataset.view);
+    if(state.regMode){
+      state.regMode = false;
+      $id("regPanel").classList.remove("on");
+      $id("sessTableWrap").style.display = "flex";
+      $id("sessHead").style.display = "flex";
+      $id("colFolders").style.display = "block";
+    }
+    $id("hdrTitle").textContent = titles[b.dataset.view];
+    if(b.dataset.view === "console" && !state.current){
+      $id("msgs").innerHTML = `<div class="msg"><div class="who system">SYSTEM</div><div class="body">Select a session in the registry to bind the console.</div></div>`;
+    }
+    beep(520);
+  });
+});
+$id("refreshBtn").addEventListener("click", async ()=>{
+  $id("ftrState").textContent = "REFRESHING : QUERYING OMNIGENT&#8230;";
+  try{ await refreshAll(); $id("ftrState").textContent = "ACCESS GRANTED : OMNIGENT BRIDGE"; }
+  catch(e){ $id("ftrState").textContent = "REFRESH FAILED : " + e.message; }
+});
+
+/* ---------- agents view ---------- */
+function renderAgents(){
+  const g = $id("agentGrid");
+  g.innerHTML = "";
+  state.agents.forEach(a=>{
+    const colors = ["var(--lavender)","var(--blue)","var(--periwinkle)","var(--gold)","var(--coral)","var(--orange)","var(--iceblue)"];
+    const c = colors[(a.name||"").length % colors.length];
+    const d = document.createElement("div");
+    d.className = "acard";
+    d.innerHTML =
+      `<div class="ahead" style="background:${c}"><span>${esc((a.name||a.id).toUpperCase())}</span><span class="v">${esc(a.harness||"")}</span></div>`+
+      `<div class="abody">`+
+      `<div class="row"><span class="k">SOURCE</span><span class="v2">${a.builtin ? "BUILT-IN" : "CUSTOM"}</span></div>`+
+      `<div class="row"><span class="k">MCP SERVERS</span><span class="v2">${(a.mcp_servers||[]).length}</span></div>`+
+      `<div class="row"><span class="k">TERMINALS</span><span class="v2">${esc((a.terminals||[]).join(", ")||"—")}</span></div>`+
+      `<div class="row"><span class="k">POLICIES</span><span class="v2">${(a.policies||[]).length}</span></div>`+
+      `</div><button class="launch" style="background:${c}">LAUNCH SESSION</button>`;
+    d.querySelector(".launch").addEventListener("click", ()=>openPicker(a));
+    g.appendChild(d);
+  });
+}
+
+/* ---------- status view ---------- */
+async function renderStatus(){
+  if(!state.hostId) return;
+  try{
+    const [runners, models, info] = await Promise.all([
+      api("/runners").catch(()=>({data:[]})),
+      api(`/hosts/${state.hostId}/harnesses/${state.host.configured_harnesses && state.host.configured_harnesses["claude-native"] ? "claude-native" : Object.keys(state.host.configured_harnesses||{})[0]||"claude-native"}/model-options`).catch(()=>({models:[]})),
+      api("/info").catch(()=>({})),
+    ]);
+    const usage = await api("/usage").catch(()=>({}));
+    const rl = runners.data || runners.runners || [];
+    const hb = $id("hostBody");
+    hb.innerHTML =
+      `<div class="mrow"><span class="mname">HOST</span><span class="mval" style="color:#d8dbf0;flex:1;text-align:left">${esc(state.host.name||"")}</span></div>`+
+      `<div class="mrow"><span class="mname">HOST ID</span><span class="mval" style="color:#d8dbf0;flex:1;text-align:left;font-family:var(--mono);font-size:12px">${esc(state.hostId)}</span></div>`+
+      `<div class="mrow"><span class="mname">SERVER STATE</span><span class="mval" style="flex:1;text-align:left;color:${state.host.status==="online"?"#88BB88":"var(--red)"}">${esc((state.host.status||"").toUpperCase())}</span></div>`+
+      `<div class="mrow"><span class="mname">API VERSION</span><span class="mval" style="flex:1;text-align:left;color:var(--blue)">${esc((info.version)||"—")}</span></div>`+
+      `<div class="mrow"><span class="mname">HARNESSES</span><span class="mval" style="flex:1;text-align:left;color:var(--blue);font-family:var(--mono);font-size:12px">${esc(Object.entries(state.host.configured_harnesses||{}).filter(([,v])=>v===true).map(([k])=>k).join(", "))}</span></div>`+
+      `<div class="mrow" style="margin-top:12px"><span class="mname">RUNNERS (${rl.length})</span></div>`+
+      (rl.length ? rl.slice(0,8).map(r =>
+        `<div class="runner"><span class="dot ${r.status==="running"?"live":"off"}"></span><span class="rn">${esc((r.session_id||"").slice(0,18))}</span><span class="rs">${esc((r.status||"—").toUpperCase())}</span></div>`).join("")
+        : `<div class="runner"><span class="dot off"></span><span class="rn">no runners registered</span></div>`);
+    const db = $id("diagBody");
+    const running = state.sessions.filter(s=>s.status==="running").length;
+    const failed = state.sessions.filter(s=>s.status==="failed").length;
+    const maxBar = Math.max(usage.cost_last_30d||1, 1);
+    db.innerHTML =
+      `<div class="mgroup">`+
+      `<div class="mrow"><span class="mname">LIVE SESSIONS</span><div class="mbar"><div class="fill" style="background:var(--orange);width:${Math.min(running/Math.max(state.sessions.length,1)*100,100)}%"></div></div><span class="mval">${running}</span></div>`+
+      `<div class="mrow"><span class="mname">FAILED (SHOWN)</span><div class="mbar"><div class="fill" style="background:var(--red);width:${Math.min(failed/Math.max(state.sessions.length,1)*100,100)}%"></div></div><span class="mval">${failed}</span></div>`+
+      `<div class="mrow"><span class="mname">SPEND TODAY</span><div class="mbar"><div class="fill" style="background:var(--gold);width:${Math.min((usage.cost_today||0)/maxBar*100,100)}%"></div></div><span class="mval">${money(usage.cost_today)}</span></div>`+
+      `<div class="mrow"><span class="mname">SPEND 7D</span><div class="mbar"><div class="fill" style="background:var(--coral);width:${Math.min((usage.cost_last_7d||0)/maxBar*100,100)}%"></div></div><span class="mval">${money(usage.cost_last_7d)}</span></div>`+
+      `<div class="mrow"><span class="mname">SPEND 30D</span><div class="mbar"><div class="fill" style="background:var(--lavender);width:100%"></div></div><span class="mval">${money(usage.cost_last_30d)}</span></div>`+
+      `</div><div class="mgroup">`+
+      `<div class="mrow" style="margin-bottom:4px"><span class="mname" style="color:var(--peach);font-weight:700">MODEL CATALOG</span></div>`+
+      (models.models||[]).slice(0,8).map((m,i) =>
+        `<div class="runner"><span class="dot ${i===0?"live":"off"}"></span><span class="rn">${esc(m.displayName||m.id)}</span><span class="rs">${i===0?"READY":"STANDBY"}</span></div>`).join("")+
+      `</div>`;
+  }catch(e){
+    $id("diagBody").innerHTML = `<div class="mrow"><span class="mname">ERROR</span><span class="mval" style="flex:1;text-align:left;color:var(--red)">${esc(e.message)}</span></div>`;
+  }
+}
+
+/* ---------- new session picker ---------- */
+const PICK_EFFORT = [
+  ["default (none)","HARNESS DEFAULT","var(--blue)"],
+  ["low","FAST ITERATION","var(--blue)"],
+  ["medium","BALANCED","var(--blue)"],
+  ["high","DEEP REASONING","var(--blue)"],
+  ["xhigh","MAXIMUM DEPTH","var(--blue)"],
+  ["max","NO CEILING","var(--blue)"],
+];
+let selAgent = null, selModel = null, selEffort = "default (none)";
+
+function buildPick(id, items, getLabel, setLabel){
+  const box = $id(id);
+  box.innerHTML = "";
+  items.forEach(it=>{
+    const b = document.createElement("button");
+    b.className = "pickb" + (getLabel()===it.label ? " sel" : "");
+    b.style.background = it.color || "var(--periwinkle)";
+    b.innerHTML = (it.desc ? `<span class="pd">${esc(it.desc)}</span>` : "") + esc(it.label);
+    b.addEventListener("click", async ()=>{
+      setLabel(it.label);
+      beep(500);
+      if(id === "pickAgents"){
+        await loadPickerModels();
+      }
+      buildPick(id, items, getLabel, setLabel);
+    });
+    box.appendChild(b);
+  });
+}
+
+async function loadPickerModels(){
+  const a = state.agents.find(x=>x.name===selAgent);
+  const harness = (a && a.harness) || "claude-native";
+  selModel = null;
+  try{
+    const m = await api(`/hosts/${state.hostId}/harnesses/${harness}/model-options`);
+    state.models = m.models || [];
+  }catch(e){ state.models = []; }
+  const items = state.models.map((m,i)=>({
+    label: m.id,
+    desc: (m.displayName||"") + (i===0 ? " : READY" : ""),
+    color: "var(--periwinkle)",
+  }));
+  if(!items.length) items.push({label:"(harness default)", desc:"NO CATALOG", color:"var(--periwinkle)"});
+  buildPick("pickModels", items, ()=>selModel, v=>selModel=v);
+}
+
+async function openPicker(agentPrefill){
+  if(!state.agents.length){
+    try{ const d = await api("/agents"); state.agents = d.data||[]; }catch(e){}
+  }
+  const aItems = state.agents.map(a=>({
+    label: a.name,
+    desc: (a.builtin?"BUILT-IN":"CUSTOM") + " : " + (a.harness||"") + (a.mcp_servers&&a.mcp_servers.length ? ` : ${a.mcp_servers.length} MCP` : ""),
+    color: a.builtin ? "var(--lavender)" : "var(--gold)",
+  }));
+  const native = aItems.find(x => { const a = state.agents.find(y=>y.name===x.label); return a && a.harness === "claude-native"; });
+  selAgent = agentPrefill && agentPrefill.name ? agentPrefill.name : (native ? native.label : (aItems[0] && aItems[0].label));
+  buildPick("pickAgents", aItems, ()=>selAgent, v=>{selAgent=v;});
+  await loadPickerModels();
+  buildPick("pickEffort", PICK_EFFORT, ()=>selEffort, v=>selEffort=v);
+  if(!$id("pickWs").value) $id("pickWs").value = "~/code";
+  $id("overlay").classList.add("open");
+  $id("pickWs").focus();
+  beep(700);
+}
+function closePicker(){ $id("overlay").classList.remove("open"); beep(300); }
+$id("newBtn").addEventListener("click", ()=>openPicker());
+$id("mClose").addEventListener("click", closePicker);
+$id("mCancel").addEventListener("click", closePicker);
+$id("overlay").addEventListener("click", e=>{ if(e.target===$id("overlay")) closePicker(); });
+document.addEventListener("keydown", e=>{ if(e.key==="Escape" && $id("overlay").classList.contains("open")) closePicker(); });
+
+$id("mLaunch").addEventListener("click", async ()=>{
+  const ws = $id("pickWs").value.trim() || "~/code";
+  const a = state.agents.find(x=>x.name===selAgent);
+  if(!a){ closePicker(); return; }
+  $id("mLaunch").textContent = "LAUNCHING…";
+  try{
+    let created;
+    try{
+      created = await api("/sessions", {method:"POST", body: JSON.stringify({agent_id: a.id})});
+    }catch(e1){
+      created = await api("/sessions", {method:"POST", body: JSON.stringify({})});
+    }
+    const id = created.id || (created.data && created.data.id) || created.session_id;
+    if(selModel && selModel !== "(harness default)"){
+      try{ await api(`/sessions/${id}`, {method:"PATCH", body: JSON.stringify({model_override: selModel})}); }catch(e){}
+    }
+    let launchNote = "SESSION CREATED";
+    if(state.hostId){
+      try{
+        await api(`/hosts/${state.hostId}/runners`, {method:"POST", body: JSON.stringify({session_id: id, workspace: ws})});
+        launchNote = "RUNNER LAUNCHED";
+      }catch(e){
+        launchNote = "SESSION CREATED : RUNNER NOT LAUNCHED : " + e.message;
+      }
+    }
+    closePicker();
+    await refreshSessions();
+    bindSession(id);
+    sysLine(launchNote + " : " + short(id) + " : AGENT " + selAgent.toUpperCase() + " : WS " + ws);
+    beep(880);
+  }catch(e){
+    sysLine("LAUNCH FAILED : " + e.message);
+    beep(220);
+  }finally{
+    $id("mLaunch").textContent = "LAUNCH";
+  }
+});
+
+/* ---------- clocks ---------- */
+function pad(n){return String(n).padStart(2,"0")}
+function tick(){
+  const now = new Date();
+  const start = new Date(now.getFullYear(),0,1);
+  const doy = (now - start)/86400000;
+  const sd = 41000 + (doy/365)*1000 + (now.getHours()/24);
+  $id("stardate").textContent = "SD " + sd.toFixed(1);
+  $id("clock").innerHTML = pad(now.getHours())+":"+pad(now.getMinutes())+":"+pad(now.getSeconds());
+}
+tick(); setInterval(tick,1000);
+
+/* ---------- audio toggle ---------- */
+state.sndOn = false; state.actx = null;
+$id("sndBtn").addEventListener("click",()=>{
+  state.sndOn = !state.sndOn;
+  $id("sndBtn").textContent = "AUDIO : " + (state.sndOn?"ON":"OFF");
+  if(state.sndOn) beep(760);
+});
+
+/* ---------- wire static buttons ---------- */
+$id("sendBtn").addEventListener("click", send);
+$id("cmdline").addEventListener("keydown", e=>{ if(e.key==="Enter") send(); });
+$id("purgeBtn").addEventListener("click", purgeCurrent);
+
+boot();
+</script>
+</body>
+</html>
