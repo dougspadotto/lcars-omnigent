@@ -1490,6 +1490,9 @@ function stopTermFeed(){
 function feedWrite(data){
   if(!feedTerm) return;
   feedTerm.write(data);
+  /* any pane output stamps activity : the prompt scanner uses the silence
+     after it, since a working harness repaints its spinner constantly */
+  state.feedLastWriteAt = Date.now();
   const box = $id("livefeed");
   if(!box.open) box.open = true;
   /* the grid is the pane's full height, taller than the panel : follow the
@@ -1854,13 +1857,21 @@ function scanAsk(){
     /* two consecutive identical scans : a real waiting prompt, not one
        repaint frame of the TUI */
   if(state.askStreak >= 2){
+    /* a working harness repaints its spinner every second, so menu-like
+       content on screen while output is flowing is just content : only a
+       pane that has been quiet can be waiting for input */
+    const quiet = Date.now() - (state.feedLastWriteAt||0) > 4000;
     if(state.askSig === state.askDismissedSig){
       /* dismissed by the user : stays hidden until the prompt changes */
       if(askStable !== null){ askStable = det; }
-    } else if(askStable === null){
+    } else if(quiet && askStable === null){
       showAsk(det);
-    } else {
+    } else if(quiet){
       askStable = det;
+    } else if(askStable !== null){
+      /* output resumed : whatever is on screen is being repainted, not read */
+      hideAsk();
+      state.askStreak = 0;
     }
   }
   } else {
