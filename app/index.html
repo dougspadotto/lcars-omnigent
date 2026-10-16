@@ -1556,6 +1556,28 @@ function cleanPane(s){
   return s.replace(/[│╭╮╰╯─━|]+/g," ").replace(/\s+/g," ").trim();
 }
 const ASK_TRIGGER = /(do you want|would you like|how (do|would) you|which option|select (an|one|a)|choose (an|one|a)|your (choice|answer|response)|proceed\?|answer below|freeform)/i;
+/* typed replies : "2", "b", "option c", "3." select the matching option
+   (letters map to the detected options' on-screen order, so the CLI never
+   needs to understand letters); anything else goes through as freeform
+   keystrokes. Only single tokens match, so "2048" stays freeform. */
+function parseReply(text, options){
+  const t = text.trim().toLowerCase();
+  if(/^\d$/.test(t)){
+    const o = options.find(o=>o.num === +t);
+    if(o) return {kind:"option", opt:o};
+  }
+  if(/^[a-z]$/.test(t)){
+    const o = options.find(o=>o.num === t.charCodeAt(0)-96);
+    if(o) return {kind:"option", opt:o};
+  }
+  const m = t.match(/^(?:option\s*)?([0-9a-z])\b/);
+  if(m){
+    const n = /\d/.test(m[1]) ? +m[1] : m[1].charCodeAt(0)-96;
+    const o = options.find(o=>o.num === n);
+    if(o) return {kind:"option", opt:o};
+  }
+  return {kind:"freeform", text: text.trim()};
+}
 function detectPrompt(lines){
   if(!lines) return null;
   const optRe = /^\s*[│|]?\s*[❯▸]?\s*(\d)[.)]\s+(.+?)\s*[│|]*\s*$/;
@@ -1601,41 +1623,69 @@ function showAsk(det){
   q.textContent = det.question;
   q.style.cssText = "color:#ffd59a;font-weight:700;margin-bottom:6px";
   body.appendChild(q);
+  const status = document.createElement("div");
+  status.style.cssText = "margin:6px 0 0;color:#7fe0a0;font-weight:700;font-size:11px;letter-spacing:.08em;display:none";
+  const setSent = (t, ok)=>{
+    status.textContent = t;
+    status.style.color = ok ? "#7fe0a0" : "var(--coral)";
+    status.style.display = "block";
+  };
+  /* the card clears itself when the scan sees the prompt leave the screen,
+     so sends stay visible as RECOGNIZED / TRANSMITTED until then */
+  const sendOption = async (o, btn)=>{
+    if(btn) btn.disabled = true;
+    setSent("RECOGNIZED : OPTION " + o.num + " : " + o.label.toUpperCase(), true);
+    if(!await tmuxSendHex(hexOf(String(o.num)) + " 0d")){
+      setSent("TRANSMISSION FAILED : RETRY", false);
+      if(btn) btn.disabled = false;
+    }
+  };
   det.options.forEach(o=>{
     const b = document.createElement("button");
     b.style.cssText = "display:block;width:100%;text-align:left;margin:3px 0;padding:6px 12px;font-size:12px;background:#1a2438;color:#c8d4f0;border:1px solid #2a3a55;border-radius:8px;cursor:pointer;font-family:var(--font);letter-spacing:.04em";
     b.textContent = o.num + " : " + o.label;
-    b.addEventListener("click", async ()=>{
-      b.disabled = true;
-      await tmuxSendHex(hexOf(String(o.num)) + " 0d");
-      hideAsk();
-    });
+    b.addEventListener("click", ()=>sendOption(o, b));
     body.appendChild(b);
   });
   const row = document.createElement("div");
   row.style.cssText = "display:flex;gap:6px;margin-top:6px";
   const inp = document.createElement("input");
-  inp.placeholder = "OR TYPE A REPLY";
+  inp.placeholder = "REPLY : NUMBER, LETTER, OR TEXT";
   inp.style.cssText = "flex:1;background:#000;border:1px solid #2a3a55;border-radius:8px;color:#dfe2f2;font-family:var(--mono);font-size:12px;padding:5px 8px";
-  const mk = (label, fn) => {
-    const b = document.createElement("button");
-    b.textContent = label;
-    b.style.cssText = "padding:5px 14px;font-size:12px;background:#2a1a08;color:var(--tangerine);border:1px solid #4a3418;border-radius:8px;cursor:pointer;font-family:var(--font);font-weight:700;letter-spacing:.08em";
-    b.addEventListener("click", fn);
-    return b;
-  };
+  const send = document.createElement("button");
+  send.textContent = "SEND";
+  send.style.cssText = "padding:5px 14px;font-size:12px;background:#2a1a08;color:var(--tangerine);border:1px solid #4a3418;border-radius:8px;cursor:pointer;font-family:var(--font);font-weight:700;letter-spacing:.08em";
   const doSend = async ()=>{
     const v = inp.value.trim();
-    if(!v) return;
+    if(!v || inp.disabled) return;
     inp.disabled = true;
-    await tmuxSendHex(hexOf(v) + " 0d");
-    hideAsk();
+    const r = parseReply(v, det.options);
+    let ok;
+    if(r.kind === "option"){
+      await sendOption(r.opt, null);
+      ok = true;
+    } else {
+      setSent("TRANSMITTED : " + v.toUpperCase(), true);
+      ok = await tmuxSendHex(hexOf(v) + " 0d");
+      if(!ok) setSent("TRANSMISSION FAILED : RETRY", false);
+    }
+    inp.disabled = false;
+    if(ok) inp.value = "";
   };
+  send.addEventListener("click", doSend);
   inp.addEventListener("keydown", e=>{ if(e.key === "Enter") doSend(); });
+  const esc = document.createElement("button");
+  esc.textContent = "ESC";
+  esc.style.cssText = "padding:5px 14px;font-size:12px;background:#2a1a08;color:var(--tangerine);border:1px solid #4a3418;border-radius:8px;cursor:pointer;font-family:var(--font);font-weight:700;letter-spacing:.08em";
+  esc.addEventListener("click", async ()=>{
+    setSent("ESC TRANSMITTED", true);
+    await tmuxSendHex("1b");
+  });
   row.appendChild(inp);
-  row.appendChild(mk("SEND", doSend));
-  row.appendChild(mk("ESC", async ()=>{ await tmuxSendHex("1b"); hideAsk(); }));
+  row.appendChild(send);
+  row.appendChild(esc);
   body.appendChild(row);
+  body.appendChild(status);
   const box = $id("msgs");
   if(askCardEl.parentNode !== box) box.appendChild(askCardEl);
   box.scrollTop = box.scrollHeight;
