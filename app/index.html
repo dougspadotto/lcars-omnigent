@@ -254,17 +254,9 @@ body.railhidden #railTab{display:block}
 }
 .who.user{color:var(--lavender)}
 .who.assistant{color:var(--amber)}
-.who.tool{color:var(--blue)}
-.who.toolout{color:#5a7ba6}
-.who.reasoning{color:#556080}
 .who.system{color:var(--coral)}
 .msg .body{flex:1;min-width:0;color:#dfe2f2;font-family:var(--mono);font-size:13px;line-height:1.45;user-select:text;white-space:pre-wrap;overflow-wrap:anywhere}
-.msg.reasoning .body{color:#7d88ad;font-style:italic}
-.toolbody{
-  border:1px solid #2a3a55;border-radius:10px;padding:7px 10px;background:#0a0e18;
-}
-.toolhead{font-family:var(--font);font-weight:700;font-size:12px;letter-spacing:.1em;color:var(--blue);margin-bottom:4px}
-.toolbody .targ{color:#9fb4d8;font-size:12px;max-height:120px;overflow:hidden}
+.inputrow{display:flex;gap:8px;align-items:stretch;padding-top:8px;border-top:2px solid #333}
 .cursor{display:inline-block;width:9px;height:15px;background:var(--orange);vertical-align:-2px;animation:blink 1s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
 
@@ -289,7 +281,7 @@ body.railhidden #railTab{display:block}
 .md td,.md th{border:1px solid #24304e;padding:3px 8px;font-size:12px}
 .md blockquote{border-left:3px solid #33406b;margin:6px 0;padding:2px 12px;color:#9aa5c8}
 
-/* folded exec blocks */
+/* collapsible panel shell (live output) */
 details.exec{
   border:1px solid #2a3a55;border-radius:10px;background:#0a0e18;margin-bottom:6px;
   font-family:var(--mono);font-size:12px;
@@ -307,9 +299,6 @@ details.exec .targ{
   padding:6px 10px 8px;color:#9fb4d8;max-height:260px;overflow-y:auto;
   white-space:pre-wrap;overflow-wrap:anywhere;border-top:1px solid #1a2338;user-select:text;
 }
-details.exec.out summary{color:#556b96}
-details.exec.out{border-color:#1c2740}
-.inputrow{display:flex;gap:8px;align-items:stretch;padding-top:8px;border-top:2px solid #333}
 .inputframe{
   flex:1;border:2px solid var(--iceblue);border-radius:18px;
   display:flex;align-items:center;padding:0 14px;gap:10px;
@@ -959,6 +948,9 @@ function mdToHtml(src){
 }
 
 function renderTranscript(items){
+  /* the main screen is the conversation only : the working stream
+     (reasoning, tool calls and outputs) is what the LIVE OUTPUT pane
+     shows while running, so it never pours back in when the turn ends */
   const box = $id("msgs");
   box.innerHTML = "";
   let last = null;
@@ -979,36 +971,6 @@ function renderTranscript(items){
         div.querySelector(".body").innerHTML = mdToHtml(esc(text));
         last = div;
       }
-      box.appendChild(div);
-    }
-    else if(t === "reasoning"){
-      const txt = (i.content||[]).map(c=>c.text||c.summary||"").filter(Boolean).join(" ").trim();
-      if(!txt) return;
-      const div = document.createElement("div");
-      div.className = "msg reasoning";
-      div.innerHTML = `<div class="who reasoning">REASON</div><div class="body"></div>`;
-      div.querySelector(".body").textContent = txt.slice(0, 600);
-      box.appendChild(div);
-    }
-    else if(t === "function_call"){
-      let args = i.arguments || "";
-      try{ args = JSON.stringify(JSON.parse(args), null, 1); }catch(e){}
-      const argStr = String(args);
-      const div = document.createElement("div");
-      div.className = "msg";
-      div.innerHTML = `<div class="who tool">EXEC</div><div class="body">`+
-        `<details class="exec"><summary><span class="ename">${esc(i.name||"tool")}</span><span class="etag">${esc(argStr.replace(/\s+/g," ").slice(0,90))}</span></summary><div class="targ"></div></details></div>`;
-      div.querySelector(".targ").textContent = argStr.slice(0, 4000);
-      box.appendChild(div);
-    }
-    else if(t === "function_call_output"){
-      const out = typeof i.output === "string" ? i.output : JSON.stringify(i.output ?? "");
-      if(!out.trim()) return;
-      const div = document.createElement("div");
-      div.className = "msg";
-      div.innerHTML = `<div class="who toolout">EXEC&#160;OUT</div><div class="body">`+
-        `<details class="exec out"><summary><span class="etag">${esc(out.replace(/\s+/g," ").slice(0,100))}</span></summary><div class="targ"></div></details></div>`;
-      div.querySelector(".targ").textContent = out.slice(0, 6000);
       box.appendChild(div);
     }
     else if(t && t.includes("error")){
