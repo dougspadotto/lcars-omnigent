@@ -551,9 +551,10 @@ details.exec .targ{
           </div>
           <div class="console" id="sessConsole" style="display:none">
             <div class="consolehead">
-              <span class="ct" id="conTitle">NO SESSION BOUND</span>
+              <span class="ct" id="conTitle" title="CLICK TO RENAME">NO SESSION BOUND</span>
               <span class="cs" id="conStatus"></span>
               <span class="sp"></span>
+              <button class="purgebtn" id="renameBtn" style="background:var(--periwinkle)">RENAME</button>
               <button class="purgebtn" id="purgeBtn">PURGE</button>
             </div>
             <details id="livefeed" class="exec" style="margin:8px 0 0">
@@ -1369,14 +1370,33 @@ async function renderStatus(){
 
 /* ---------- new session picker ---------- */
 const PICK_EFFORT = [
-  ["default (none)","HARNESS DEFAULT","var(--blue)"],
-  ["low","FAST ITERATION","var(--blue)"],
-  ["medium","BALANCED","var(--blue)"],
-  ["high","DEEP REASONING","var(--blue)"],
-  ["xhigh","MAXIMUM DEPTH","var(--blue)"],
-  ["max","NO CEILING","var(--blue)"],
+  {label:"harness default", desc:"NO OVERRIDE", color:"var(--blue)"},
+  {label:"low", desc:"FAST ITERATION", color:"var(--blue)"},
+  {label:"medium", desc:"BALANCED", color:"var(--blue)"},
+  {label:"high", desc:"DEEP REASONING", color:"var(--blue)"},
+  {label:"xhigh", desc:"MAXIMUM DEPTH", color:"var(--blue)"},
+  {label:"max", desc:"NO CEILING", color:"var(--blue)"},
 ];
-let selAgent = null, selModel = null, selEffort = "default (none)";
+let selAgent = null, selModel = null, selEffort = "harness default";
+/* the runner rejects relative workspaces : default to an absolute path
+   lifted from an existing session's composer context, and expand ~ on send */
+function detectHome(){
+  for(const s of state.sessions){
+    const ctx = s.labels && s.labels["omnigent.composer_context.v1.0"];
+    if(!ctx) continue;
+    try{
+      const p = (JSON.parse(ctx).working_directory||{}).path;
+      if(p && p.startsWith("/")) return p.replace(/\/+$/,"");
+    }catch(e){}
+  }
+  return null;
+}
+function expandWorkspace(ws){
+  const home = detectHome();
+  if(ws === "~") return home || ws;
+  if(ws.startsWith("~/") && home) return home + ws.slice(1);
+  return ws;
+}
 
 function buildPick(id, items, getLabel, setLabel){
   const box = $id(id);
@@ -1430,7 +1450,8 @@ async function openPicker(agentPrefill){
   buildPick("pickAgents", aItems, ()=>selAgent, v=>{selAgent=v;});
   await loadPickerModels();
   buildPick("pickEffort", PICK_EFFORT, ()=>selEffort, v=>selEffort=v);
-  if(!$id("pickWs").value) $id("pickWs").value = "~/code";
+  const home = detectHome();
+  if(!$id("pickWs").value || $id("pickWs").value === "~/code") $id("pickWs").value = home || "~/code";
   $id("overlay").classList.add("open");
   $id("pickWs").focus();
   sfx.open();
@@ -1443,7 +1464,8 @@ $id("overlay").addEventListener("click", e=>{ if(e.target===$id("overlay")) clos
 document.addEventListener("keydown", e=>{ if(e.key==="Escape" && $id("overlay").classList.contains("open")) closePicker(); });
 
 $id("mLaunch").addEventListener("click", async ()=>{
-  const ws = $id("pickWs").value.trim() || "~/code";
+  let ws = $id("pickWs").value.trim() || (detectHome() || "~/code");
+  ws = expandWorkspace(ws);
   const a = state.agents.find(x=>x.name===selAgent);
   if(!a){ closePicker(); return; }
   $id("mLaunch").textContent = "LAUNCHING…";
@@ -1455,8 +1477,11 @@ $id("mLaunch").addEventListener("click", async ()=>{
       created = await api("/sessions", {method:"POST", body: JSON.stringify({})});
     }
     const id = created.id || (created.data && created.data.id) || created.session_id;
-    if(selModel && selModel !== "(harness default)"){
-      try{ await api(`/sessions/${id}`, {method:"PATCH", body: JSON.stringify({model_override: selModel})}); }catch(e){}
+    const patch = {};
+    if(selModel && selModel !== "(harness default)") patch.model_override = selModel;
+    if(selEffort && selEffort !== "harness default") patch.reasoning_effort = selEffort;
+    if(Object.keys(patch).length){
+      try{ await api(`/sessions/${id}`, {method:"PATCH", body: JSON.stringify(patch)}); }catch(e){}
     }
     let launchNote = "SESSION CREATED";
     if(state.hostId){
@@ -1464,12 +1489,17 @@ $id("mLaunch").addEventListener("click", async ()=>{
         await api(`/hosts/${state.hostId}/runners`, {method:"POST", body: JSON.stringify({session_id: id, workspace: ws})});
         launchNote = "RUNNER LAUNCHED";
       }catch(e){
-        launchNote = "SESSION CREATED : RUNNER NOT LAUNCHED : " + e.message;
+        launchNote = "RUNNER NOT LAUNCHED : " + e.message;
       }
     }
     closePicker();
     await refreshSessions();
     bindSession(id);
+    /* the runner needs a beat to flip the session to running : pull the
+       tree again so the new session rises into ACTIVE right away */
+    setTimeout(()=>refreshSessions(), 1500);
+    setTimeout(()=>refreshSessions(), 5000);
+    state.forceScroll = true;
     sfx.launched();
     sysLine(launchNote + " : " + short(id) + " : AGENT " + selAgent.toUpperCase() + " : WS " + ws);
   }catch(e){
@@ -1993,6 +2023,49 @@ cmdBox.addEventListener("keydown", e=>{
   cmdBox.selectionStart = cmdBox.selectionEnd = cmdBox.value.length;
 });
 $id("purgeBtn").addEventListener("click", purgeCurrent);
+
+/* ---------- rename : inline edit of the console title ---------- */
+function startRename(){
+  const s = state.sessions.find(x=>x.id===state.current);
+  if(!s){ sysLine("NO SESSION BOUND : NOTHING TO RENAME."); return; }
+  const el = $id("conTitle");
+  if(el.querySelector("input")) return;
+  const old = s.title || "";
+  el.innerHTML = "";
+  const inp = document.createElement("input");
+  inp.value = old;
+  inp.spellcheck = false;
+  inp.style.cssText = "background:#000;border:1px solid #2a3a55;border-radius:6px;color:var(--peach);font:inherit;letter-spacing:inherit;padding:2px 6px;width:min(420px,60vw)";
+  el.appendChild(inp);
+  inp.focus(); inp.select();
+  let done = false;
+  const finish = save => {
+    if(done) return;
+    done = true;
+    const val = inp.value.trim();
+    el.textContent = val || old;
+    if(!save || !val || val === old) return;
+    api(`/sessions/${s.id}`, {method:"PATCH", body: JSON.stringify({title: val})})
+      .then(()=>{
+        s.title = val;
+        $id("conTitle").textContent = val;
+        renderSessions();
+        sysLine("RENAMED : " + short(s.id) + " : " + val.toUpperCase());
+        sfx.select();
+      })
+      .catch(e=>{ el.textContent = old; sysLine("RENAME FAILED : " + e.message); sfx.error(); });
+  };
+  inp.addEventListener("keydown", e=>{
+    if(e.key === "Enter"){ e.preventDefault(); finish(true); }
+    else if(e.key === "Escape"){ e.preventDefault(); finish(false); }
+    e.stopPropagation();
+  });
+  inp.addEventListener("blur", ()=>finish(true));
+}
+$id("renameBtn").addEventListener("click", startRename);
+$id("conTitle").addEventListener("click", e=>{
+  if(!e.target.closest("input")) startRename();
+});
 
 boot();
 </script>
