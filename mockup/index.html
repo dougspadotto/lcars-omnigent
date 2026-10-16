@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LCARS : OMNIGENT ACCESS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --black:#000;
+  --peach:#FFCC99;
+  --amber:#FFCC66;
+  --orange:#FF9966;
+  --tangerine:#FF9900;
+  --coral:#CC6666;
+  --red:#DD4C4C;
+  --lavender:#CC99CC;
+  --periwinkle:#9999CC;
+  --blue:#99CCFF;
+  --iceblue:#6688CC;
+  --gold:#DDAA44;
+  --rail-w:186px;
+  --hdr-h:122px;
+  --ftr-h:46px;
+  --gutter:4px;
+  --arm:26px;
+  --font:"Antonio","Arial Narrow",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--black);
+  font-family:var(--font);
+  color:var(--black);
+  overflow:hidden;
+  user-select:none;
+}
+
+/* ===== FRAME GRID ===== */
+.frame{
+  height:100vh;
+  display:grid;
+  grid-template-columns:var(--rail-w) 1fr;
+  grid-template-rows:var(--hdr-h) 1fr var(--ftr-h);
+  gap:var(--gutter);
+  padding:var(--gutter);
+}
+
+/* ===== ELBOWS ===== */
+.elbow{position:relative;background:var(--peach);border-top-left-radius:var(--rail-w)}
+.elbow::after{
+  content:"";position:absolute;right:0;bottom:0;
+  width:calc(100% - var(--arm));height:calc(100% - var(--arm));
+  background:var(--black);border-top-left-radius:calc(var(--rail-w) - var(--arm));
+}
+.elbow-b{position:relative;background:var(--amber);border-bottom-left-radius:var(--rail-w)}
+.elbow-b::after{
+  content:"";position:absolute;right:0;top:0;
+  width:calc(100% - var(--arm));height:calc(100% - var(--arm));
+  background:var(--black);border-bottom-left-radius:calc(var(--rail-w) - var(--arm));
+}
+.elbow-logo{
+  position:absolute;right:38px;bottom:6px;width:84px;height:84px;z-index:2;
+}
+
+/* ===== HEADER ===== */
+.header{
+  background:var(--peach);
+  border-radius:0 30px 0 0;
+  display:flex;align-items:center;
+  padding:0 14px 0 20px;
+  gap:10px;
+  min-width:0;
+}
+.header .code{font-weight:700;font-size:15px;letter-spacing:.05em;opacity:.85;white-space:nowrap}
+.header .title{
+  font-weight:700;font-size:34px;letter-spacing:.02em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.header .spacer{flex:1}
+.header .sd{
+  background:var(--black);color:var(--peach);
+  font-weight:700;font-size:20px;letter-spacing:.06em;
+  border-radius:16px;padding:4px 16px;white-space:nowrap;
+}
+.header .sub{font-size:13px;font-weight:500;opacity:.75;white-space:nowrap}
+.newbtn{
+  background:var(--tangerine);color:#000;border:none;border-radius:16px;
+  font-family:var(--font);font-weight:700;font-size:16px;letter-spacing:.06em;
+  padding:7px 18px 5px;cursor:pointer;white-space:nowrap;
+}
+.newbtn:hover{filter:brightness(1.12)}
+.newbtn:active{filter:brightness(.85)}
+
+/* ===== RAIL ===== */
+.rail{display:flex;flex-direction:column;gap:var(--gutter);overflow:hidden}
+.btn{
+  font-family:var(--font);font-weight:700;font-size:15px;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--black);
+  border:none;cursor:pointer;text-align:right;
+  padding:7px 12px 5px;border-radius:18px;
+  line-height:1;white-space:nowrap;
+  transition:filter .08s;
+}
+.btn:hover{filter:brightness(1.18)}
+.btn:active{filter:brightness(.85)}
+.btn.active{outline:3px solid #fff;outline-offset:-3px}
+.btn .num{display:block;font-size:11px;font-weight:500;opacity:.7;text-align:left;letter-spacing:.1em}
+.rail .gapbar{height:8px;border-radius:5px;margin-top:auto}
+
+/* ===== MAIN DATA AREA ===== */
+.dataarea{
+  border:3px solid var(--iceblue);
+  border-radius:22px;
+  overflow:hidden;
+  position:relative;
+  background:#000;
+  display:flex;flex-direction:column;
+}
+.view{display:none;flex:1;min-height:0;flex-direction:column;overflow:hidden}
+.view.active{display:flex}
+
+/* generic lcars bits */
+.cap{font-size:11px;font-weight:700;letter-spacing:.14em}
+.pill{
+  display:inline-block;border-radius:12px;padding:1px 10px 0;
+  font-size:12px;font-weight:700;letter-spacing:.06em;line-height:17px;
+}
+.st-RUNNING{background:var(--orange);color:#000}
+.st-IDLE{background:var(--periwinkle);color:#000}
+.st-COMPLETE{background:#88BB88;color:#000}
+.st-FAILED{background:var(--red);color:#000}
+
+/* ===== SESSIONS VIEW ===== */
+.sesswrap{display:flex;flex:1;min-height:0}
+.sessfilters{
+  width:196px;flex:0 0 auto;display:flex;flex-direction:column;gap:4px;
+  padding:10px 0 10px 10px;border-right:2px solid #333;margin-right:0;
+  overflow-y:auto;
+}
+.sessfilters::-webkit-scrollbar{width:6px}
+.sessfilters::-webkit-scrollbar-thumb{background:#333}
+.flabel{font-size:12px;font-weight:700;letter-spacing:.12em;color:var(--periwinkle);margin:6px 0 2px}
+.fbtn{
+  font-family:var(--font);font-weight:700;font-size:13px;color:var(--black);
+  border:none;border-radius:14px;padding:5px 10px 3px;cursor:pointer;text-align:right;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;
+}
+.fbtn:hover{filter:brightness(1.2)}
+.fbtn.sel{outline:3px solid #fff;outline-offset:-3px}
+.sessmain{flex:1;min-width:0;display:flex;flex-direction:column;padding:12px 14px 10px 14px}
+.sesshead{display:flex;align-items:baseline;gap:14px;margin-bottom:8px}
+.sesshead h2{font-size:22px;font-weight:700;color:var(--peach);letter-spacing:.03em}
+.sesshead .cnt{font-size:14px;color:var(--periwinkle);font-weight:500}
+table.sessions{width:100%;border-collapse:collapse;font-size:14px}
+table.sessions th{
+  text-align:left;color:var(--amber);font-size:12px;font-weight:700;letter-spacing:.12em;
+  border-bottom:2px solid #444;padding:4px 10px 5px;
+}
+table.sessions td{padding:6px 10px;border-bottom:1px solid #222;color:#ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+table.sessions tr:hover td{background:#141420;cursor:pointer}
+table.sessions tr.sel td{background:#1c1c30}
+td.id{color:var(--blue);font-weight:500}
+td.agent{color:var(--lavender);font-weight:500}
+td.cost{text-align:right;color:var(--gold)}
+td.ws{color:#8a8fa8;font-size:13px}
+.pagerow{display:flex;gap:6px;align-items:center;margin-top:auto;padding-top:10px}
+.pagerow .btn{padding:5px 14px 3px;font-size:13px}
+.pagerow .info{color:var(--periwinkle);font-size:13px;font-weight:500;margin-left:auto}
+
+/* registries panel (expanded mode) */
+.regwrap{display:none;flex:1;min-height:0;overflow-y:auto;padding:12px 14px}
+.regwrap.on{display:block}
+.regwrap::-webkit-scrollbar{width:8px}
+.regwrap::-webkit-scrollbar-thumb{background:#333;border-radius:4px}
+.rpanel{border:2px solid #2e3350;border-radius:14px;margin-bottom:14px;overflow:hidden}
+.rpanel .rhead{color:#000;font-weight:700;font-size:15px;letter-spacing:.08em;padding:5px 14px 3px;display:flex;justify-content:space-between}
+.rpanel .rhead .rc{font-size:12px;opacity:.8}
+.rrow{display:flex;gap:14px;padding:6px 14px;border-bottom:1px solid #171a28;font-size:13px;color:#dfe2f2;font-family:var(--mono)}
+.rrow:last-child{border-bottom:none}
+.rrow .rk{color:#6f77a0;flex:0 0 200px;font-family:var(--font);font-weight:700;font-size:12px;letter-spacing:.1em}
+.rrow .ok{color:#88BB88;font-weight:700}
+.rrow .bad{color:var(--red);font-weight:700}
+
+/* ===== CONSOLE VIEW ===== */
+.console{flex:1;min-height:0;display:flex;flex-direction:column;padding:10px 14px 8px}
+.msgs{flex:1;min-height:0;overflow-y:auto;padding-right:6px}
+.msgs::-webkit-scrollbar{width:8px}
+.msgs::-webkit-scrollbar-thumb{background:#333;border-radius:4px}
+.msg{display:flex;gap:12px;margin-bottom:10px}
+.msg .who{
+  flex:0 0 96px;text-align:right;font-weight:700;font-size:13px;letter-spacing:.08em;
+  padding-top:2px;
+}
+.who.user{color:var(--lavender)}
+.who.assistant{color:var(--amber)}
+.who.tool{color:var(--blue)}
+.who.system{color:var(--coral)}
+.msg .body{flex:1;min-width:0;color:#dfe2f2;font-family:var(--mono);font-size:13px;line-height:1.45;user-select:text}
+.msg .body b{color:#fff;font-weight:600}
+.toolbody{
+  border:1px solid #2a3a55;border-radius:10px;padding:7px 10px;background:#0a0e18;
+  white-space:pre-wrap;overflow-wrap:anywhere;
+}
+.toolhead{font-family:var(--font);font-weight:700;font-size:12px;letter-spacing:.1em;color:var(--blue);margin-bottom:4px}
+.cursor{display:inline-block;width:9px;height:15px;background:var(--orange);vertical-align:-2px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.inputrow{display:flex;gap:8px;align-items:stretch;padding-top:8px;border-top:2px solid #333}
+.inputframe{
+  flex:1;border:2px solid var(--iceblue);border-radius:18px;
+  display:flex;align-items:center;padding:0 14px;gap:10px;
+}
+.inputframe .prompt{color:var(--tangerine);font-weight:700;font-size:15px;letter-spacing:.05em;white-space:nowrap}
+.inputframe input{
+  flex:1;background:none;border:none;outline:none;color:#fff;
+  font-family:var(--mono);font-size:14px;
+}
+.sendbtn{
+  font-family:var(--font);font-weight:700;font-size:16px;color:#000;background:var(--tangerine);
+  border:none;border-radius:18px;padding:8px 22px 6px;cursor:pointer;letter-spacing:.05em;
+}
+.sendbtn:hover{filter:brightness(1.15)}
+
+/* ===== AGENTS VIEW ===== */
+.agentgrid{flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;padding:14px;align-content:start}
+.agentgrid::-webkit-scrollbar{width:8px}
+.agentgrid::-webkit-scrollbar-thumb{background:#333;border-radius:4px}
+.acard{border:2px solid #2e3350;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;background:#050508}
+.acard .ahead{
+  color:#000;font-weight:700;font-size:17px;letter-spacing:.04em;
+  padding:6px 14px 4px;display:flex;justify-content:space-between;align-items:baseline;
+}
+.acard .ahead .v{font-size:12px;opacity:.75}
+.acard .abody{padding:8px 14px 10px;font-size:13px;color:#c8cbe0;font-weight:500}
+.acard .row{display:flex;justify-content:space-between;gap:12px;padding:2.5px 0;border-bottom:1px solid #171a28}
+.acard .row .k{color:#6f77a0;letter-spacing:.1em;font-size:12px;font-weight:700}
+.acard .row .v2{color:#d8dbf0;text-align:right}
+.acard .launch{
+  margin:6px 12px 12px;text-align:center;font-weight:700;font-size:14px;color:#000;
+  border-radius:14px;padding:5px 0 3px;cursor:pointer;border:none;font-family:var(--font);
+}
+.acard .launch:hover{filter:brightness(1.15)}
+
+/* ===== STATUS VIEW ===== */
+.statusgrid{flex:1;min-height:0;display:flex;gap:14px;padding:14px;overflow:hidden}
+.spanel{border:2px solid #2e3350;border-radius:16px;display:flex;flex-direction:column;min-width:0}
+.spanel .shead{color:#000;font-weight:700;font-size:15px;letter-spacing:.08em;padding:5px 14px 3px;border-radius:13px 13px 0 0}
+.spanel .sbody{padding:10px 14px;font-size:13px;color:#c8cbe0;overflow-y:auto}
+.spanel .sbody::-webkit-scrollbar{width:6px}
+.spanel .sbody::-webkit-scrollbar-thumb{background:#333}
+.hostcol{flex:1.1}
+.metriccol{flex:1.3;display:flex;flex-direction:column}
+.metriccol .mgroup{margin-bottom:14px}
+.mrow{display:flex;align-items:center;gap:10px;margin-bottom:7px}
+.mrow .mname{flex:0 0 170px;font-size:13px;font-weight:500;color:#aab;letter-spacing:.06em;text-transform:uppercase}
+.mbar{flex:1;height:16px;border-radius:8px;background:#101018;position:relative;overflow:hidden}
+.mbar .fill{position:absolute;left:0;top:0;bottom:0;border-radius:8px;animation:grow 2.4s ease-out forwards}
+@keyframes grow{from{width:0}}
+.mval{flex:0 0 54px;text-align:right;color:var(--gold);font-weight:700;font-size:14px}
+.runner{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #171a28}
+.dot{width:9px;height:9px;border-radius:50%;background:#88BB88}
+.dot.live{animation:pulse 1.6s infinite}
+@keyframes pulse{50%{opacity:.25}}
+.runner .rn{color:#d8dbf0;font-weight:500}
+.runner .rs{margin-left:auto;font-size:12px;letter-spacing:.1em;font-weight:700;color:#6f77a0}
+
+/* ===== FOOTER ===== */
+.footer{
+  background:var(--amber);border-radius:0 0 30px 0;
+  display:flex;align-items:center;gap:8px;padding:0 14px 0 16px;
+}
+.footer .seg{font-weight:700;font-size:15px;letter-spacing:.05em;white-space:nowrap}
+.footer .sp{flex:1}
+.footer .clockbox{
+  background:#000;color:var(--amber);border-radius:16px;padding:3px 16px 1px;
+  font-weight:700;font-size:17px;letter-spacing:.08em;white-space:nowrap;
+}
+.footer .snd{
+  background:#000;color:var(--amber);border:none;border-radius:16px;
+  font-family:var(--font);font-weight:700;font-size:13px;letter-spacing:.08em;
+  padding:5px 14px 3px;cursor:pointer;
+}
+.blinkblock{width:26px;height:16px;border-radius:8px;background:#000;animation:blink 1.2s steps(1) infinite}
+
+/* ===== NEW SESSION PICKER MODAL ===== */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:50}
+.overlay.open{display:flex}
+.modal{
+  width:840px;max-width:94vw;max-height:88vh;background:#000;
+  border:3px solid var(--iceblue);border-radius:22px;overflow:hidden;
+  display:flex;flex-direction:column;
+}
+.mhead{
+  display:flex;align-items:center;gap:14px;padding:8px 16px 6px;
+  color:#000;font-weight:700;font-size:22px;letter-spacing:.05em;
+}
+.mhead .msub{font-size:13px;font-weight:500;opacity:.75}
+.mhead .sp{flex:1}
+.mclose{
+  background:#000;color:var(--peach);border:none;border-radius:14px;
+  font-family:var(--font);font-weight:700;font-size:13px;letter-spacing:.08em;
+  padding:5px 14px 3px;cursor:pointer;
+}
+.mbody{display:flex;gap:12px;padding:14px 16px;overflow:auto}
+.mcol{flex:1;border:2px solid #2e3350;border-radius:14px;padding:8px;min-width:0;display:flex;flex-direction:column;gap:4px}
+.pickb{
+  font-family:var(--font);font-weight:700;font-size:13.5px;color:var(--black);
+  border:none;border-radius:13px;padding:6px 10px 4px;cursor:pointer;text-align:left;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;
+}
+.pickb:hover{filter:brightness(1.2)}
+.pickb.sel{outline:3px solid #fff;outline-offset:-3px}
+.pickb .pd{display:block;font-size:11px;font-weight:500;opacity:.7;letter-spacing:.08em}
+.mfoot{display:flex;align-items:center;gap:10px;padding:10px 16px 14px;border-top:2px solid #333}
+.mfoot input{
+  background:#0a0e18;border:2px solid var(--iceblue);border-radius:12px;color:#fff;
+  font-family:var(--mono);font-size:13px;padding:6px 10px;flex:1;min-width:0;outline:none;
+}
+.mfoot input:focus{border-color:var(--tangerine)}
+#pickBudget{flex:0 0 90px}
+.mfoot .btn{padding:7px 18px 5px;font-size:14px}
+
+@media (max-width:900px){
+  .frame{grid-template-columns:130px 1fr}
+  :root{--rail-w:130px;--hdr-h:84px}
+  .header .title{font-size:24px}
+  .mbody{flex-direction:column}
+}
+</style>
+</head>
+<body>
+<div class="frame">
+
+  <!-- TOP ELBOW + FEDERATION MERGED LOGO -->
+  <div class="elbow">
+    <svg class="elbow-logo" viewBox="0 0 120 120" role="img" aria-label="United Federation of Agents">
+      <defs>
+        <path id="arcTop" d="M 19 60 A 41 41 0 0 1 101 60"/>
+        <g id="laurelL">
+          <path d="M 55.9 106.8 A 47 47 0 0 1 16.7 41.6" fill="none" stroke="#DDAA44" stroke-width="1.4"/>
+          <ellipse cx="55.9" cy="106.8" rx="2.3" ry="6" fill="#DDAA44" transform="rotate(30 55.9 106.8)"/>
+          <ellipse cx="41.6" cy="103.3" rx="2.3" ry="6" fill="#DDAA44" transform="rotate(-2 41.6 103.3)"/>
+          <ellipse cx="29.2" cy="95.5"  rx="2.3" ry="6" fill="#DDAA44" transform="rotate(66 29.2 95.5)"/>
+          <ellipse cx="19.7" cy="84.2"  rx="2.3" ry="6" fill="#DDAA44" transform="rotate(34 19.7 84.2)"/>
+          <ellipse cx="14.2" cy="70.6"  rx="2.3" ry="6" fill="#DDAA44" transform="rotate(102 14.2 70.6)"/>
+          <ellipse cx="13.2" cy="55.9"  rx="2.3" ry="6" fill="#DDAA44" transform="rotate(70 13.2 55.9)"/>
+          <ellipse cx="16.7" cy="41.6"  rx="2.3" ry="6" fill="#DDAA44" transform="rotate(138 16.7 41.6)"/>
+        </g>
+        <polygon id="star5" points="0,-26 7.6,-8 26.5,-8 11,3.5 16.9,21 0,10 -16.9,21 -11,3.5 -26.5,-8 -7.6,-8"/>
+      </defs>
+      <circle cx="60" cy="60" r="56" fill="#0e1a38" stroke="#DDAA44" stroke-width="3"/>
+      <circle cx="60" cy="60" r="50" fill="none" stroke="#33508F" stroke-width="1" opacity=".6"/>
+      <use href="#laurelL"/>
+      <use href="#laurelL" transform="translate(120 0) scale(-1 1)"/>
+      <g fill="#CFE0FF">
+        <circle cx="38" cy="36" r="1.5"/><circle cx="52" cy="30" r="1.1"/><circle cx="70" cy="34" r="1.7"/>
+        <circle cx="84" cy="44" r="1.2"/><circle cx="89" cy="58" r="1.5"/><circle cx="31" cy="52" r="1.3"/>
+        <circle cx="86" cy="74" r="1.1"/><circle cx="76" cy="88" r="1.4"/><circle cx="44" cy="88" r="1.2"/>
+      </g>
+      <text font-family="Antonio, sans-serif" font-size="7.5" letter-spacing=".4" font-weight="700" fill="#DDAA44">
+        <textPath href="#arcTop" startOffset="50%" text-anchor="middle">UNITED FEDERATION OF AGENTS</textPath>
+      </text>
+      <g transform="translate(60 64) rotate(-8)">
+        <use href="#star5" fill="#E84D8A" stroke="#E84D8A" stroke-width="10" stroke-linejoin="round"/>
+        <g fill="#B3246B">
+          <ellipse cx="0" cy="-13" rx="2.4" ry="3.2"/><ellipse cx="-4.5" cy="-4" rx="1.8" ry="2.4"/><ellipse cx="4.5" cy="-4" rx="1.8" ry="2.4"/>
+        </g>
+        <circle cx="-6" cy="6" r="3.3" fill="#111"/><circle cx="6" cy="6" r="3.3" fill="#111"/>
+        <circle cx="-5" cy="5" r="1.1" fill="#fff"/><circle cx="7" cy="5" r="1.1" fill="#fff"/>
+        <path d="M -4 12.5 Q 0 15.8 4 12.5" stroke="#111" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+      </g>
+      <g transform="translate(31 83) rotate(16) scale(0.42)">
+        <use href="#star5" fill="#3FA98C" stroke="#3FA98C" stroke-width="10" stroke-linejoin="round"/>
+        <circle cx="-6" cy="5" r="3.2" fill="#111"/><circle cx="6" cy="5" r="3.2" fill="#111"/>
+        <circle cx="-5" cy="4" r="1" fill="#fff"/><circle cx="7" cy="4" r="1" fill="#fff"/>
+        <path d="M -3.5 11.5 Q 0 14.5 3.5 11.5" stroke="#111" stroke-width="2" fill="none" stroke-linecap="round"/>
+      </g>
+    </svg>
+  </div>
+
+  <!-- HEADER -->
+  <div class="header">
+    <span class="code">47&#8209;A</span>
+    <span class="title" id="hdrTitle">OMNIGENT ACCESS : SESSIONS</span>
+    <span class="spacer"></span>
+    <button class="newbtn" id="newBtn">NEW SESSION</button>
+    <span class="sub" id="hdrSub">HOST 8D45988C</span>
+    <span class="sd" id="stardate">SD 41079.3</span>
+  </div>
+
+  <!-- RAIL -->
+  <nav class="rail">
+    <button class="btn active" data-view="sessions" style="background:var(--lavender)">
+      <span class="num">01&#8209;000</span>SESSIONS
+    </button>
+    <button class="btn" data-view="console" style="background:var(--orange)">
+      <span class="num">02&#8209;000</span>CONSOLE
+    </button>
+    <button class="btn" data-view="agents" style="background:var(--periwinkle)">
+      <span class="num">03&#8209;000</span>AGENTS
+    </button>
+    <button class="btn" data-view="status" style="background:var(--blue)">
+      <span class="num">04&#8209;000</span>SYSTEM<br>STATUS
+    </button>
+    <div class="gapbar" style="background:var(--coral)"></div>
+    <button class="btn" id="regBtn" style="background:var(--gold)">
+      <span class="num">05&#8209;000</span>REGISTRIES
+    </button>
+    <div class="gapbar" style="background:var(--peach)"></div>
+    <button class="btn" style="background:var(--amber)">
+      <span class="num">99&#8209;000</span>STANDBY
+    </button>
+  </nav>
+
+  <!-- MAIN DATA AREA -->
+  <main class="dataarea">
+
+    <!-- SESSIONS -->
+    <section class="view active" id="view-sessions">
+      <div class="sesswrap">
+        <div class="sessfilters" id="sessFilters">
+          <div id="colFolders">
+            <div class="flabel">OMNIGENT FOLDERS</div>
+            <div id="folderList" style="display:flex;flex-direction:column;gap:4px"></div>
+          </div>
+          <div id="colRegistries" style="margin-top:auto">
+            <div class="flabel">REGISTRIES</div>
+            <button class="fbtn" data-reg="evals" style="background:var(--gold)">EVALS : 47</button>
+            <button class="fbtn" data-reg="scheduled" style="background:var(--coral)">SCHEDULED : 3</button>
+            <button class="fbtn" data-reg="archive" style="background:var(--iceblue)">ARCHIVE : 450</button>
+          </div>
+        </div>
+        <div class="sessmain">
+          <div class="sesshead" id="sessHead">
+            <h2>SESSION REGISTRY</h2>
+            <span class="cnt" id="sessCnt">462 CONVERSATIONS ON FILE : 12 SHOWN</span>
+          </div>
+          <div id="sessTableWrap" style="display:flex;flex-direction:column;flex:1;min-height:0">
+            <table class="sessions">
+              <thead><tr>
+                <th>SESSION</th><th>AGENT</th><th>WORKSPACE</th><th>STATUS</th>
+                <th>MODEL</th><th style="text-align:right">COST</th><th>LAST ACTIVITY</th>
+              </tr></thead>
+              <tbody id="sessBody"></tbody>
+            </table>
+            <div class="pagerow">
+              <button class="btn" style="background:var(--periwinkle)">PREV</button>
+              <button class="btn" style="background:var(--periwinkle)">NEXT</button>
+              <span class="info">PAGE 01 OF 39 : SHOWING 12 OF 462</span>
+            </div>
+          </div>
+          <div class="regwrap" id="regPanel"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONSOLE -->
+    <section class="view" id="view-console">
+      <div class="console">
+        <div class="msgs" id="msgs">
+          <div class="msg">
+            <div class="who user">USER</div>
+            <div class="body">Audit the Omnigent session store and report every conversation that ended in a failed runner handoff last 30 days.</div>
+          </div>
+          <div class="msg">
+            <div class="who assistant">OMNIGENT</div>
+            <div class="body">Querying session ledger. Scope: 30 day window, status FAILED, cause = runner tunnel rejection.</div>
+          </div>
+          <div class="msg">
+            <div class="who tool">EXEC</div>
+            <div class="body"><div class="toolhead">SYS_SESSION_LIST : PAGES 01 THRU 39</div>GET /v1/sessions &nbsp;&rarr;&nbsp; 200 &nbsp;|&nbsp; filter: status=FAILED, since=2026&#8209;09&#8209;16<br>matches: 7 conversations &nbsp;|&nbsp; 4 tunnel rejections &nbsp;|&nbsp; 2 stale host &nbsp;|&nbsp; 1 model catalog miss</div>
+          </div>
+          <div class="msg">
+            <div class="who tool">EXEC</div>
+            <div class="body"><div class="toolhead">SYS_OS_SHELL : OMNIGENT STOP / RETRY CYCLE</div>omnigent stop &nbsp;&rarr;&nbsp; host stopped<br>omnigent run --harness claude --server http://127.0.0.1:6767<br>&rarr;&nbsp; 6 of 7 recovered after host restart &nbsp;|&nbsp; 1 requires model_override patch</div>
+          </div>
+          <div class="msg">
+            <div class="who assistant">OMNIGENT</div>
+            <div class="body">7 failed handoffs identified. Root causes: 4 stale host processes (recovered via restart), 2 stale session model_override values, 1 expired signature file. Recommendation: regenerate local_server.sig and patch model_override to current catalog id.<span class="cursor"></span></div>
+          </div>
+        </div>
+        <div class="inputrow">
+          <div class="inputframe">
+            <span class="prompt">&gt;</span>
+            <input id="cmdline" type="text" placeholder="ENTER DIRECTIVE" autocomplete="off">
+          </div>
+          <button class="sendbtn" id="sendBtn">TRANSMIT</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- AGENTS -->
+    <section class="view" id="view-agents">
+      <div class="agentgrid" id="agentGrid"></div>
+    </section>
+
+    <!-- STATUS -->
+    <section class="view" id="view-status">
+      <div class="statusgrid">
+        <div class="spanel hostcol">
+          <div class="shead" style="background:var(--peach)">HOST : LOCAL RUNTIME</div>
+          <div class="sbody">
+            <div class="mrow"><span class="mname">HOST ID</span><span class="mval" style="color:#d8dbf0;flex:1;text-align:left;font-family:var(--mono);font-size:12px">8d45988c25384ebd89a5d5c7de6d205b</span></div>
+            <div class="mrow"><span class="mname">SERVER</span><span class="mval" style="color:#d8dbf0;flex:1;text-align:left;font-family:var(--mono);font-size:12px">http://127.0.0.1:6767</span></div>
+            <div class="mrow"><span class="mname">UPTIME</span><span class="mval" style="flex:1;text-align:left;color:var(--blue)">6D 14H 22M</span></div>
+            <div class="mrow"><span class="mname">CHAT DB</span><span class="mval" style="flex:1;text-align:left;color:var(--blue)">~/.omnigent/chat.db : 462 CONV</span></div>
+            <div class="mrow"><span class="mname">AUTH</span><span class="mval" style="flex:1;text-align:left;color:#88BB88">SIGNATURE OK</span></div>
+            <div class="mrow" style="margin-top:14px"><span class="mname">RUNNERS</span></div>
+            <div class="runner"><span class="dot live"></span><span class="rn">claude : douglas.spadotto</span><span class="rs">CONNECTED</span></div>
+            <div class="runner"><span class="dot live"></span><span class="rn">researcher : gtm-ai-fde</span><span class="rs">CONNECTED</span></div>
+            <div class="runner"><span class="dot"></span><span class="rn">fevm-deployer : supply&#8209;chain&#8209;tower</span><span class="rs">IDLE</span></div>
+            <div class="runner"><span class="dot"></span><span class="rn">reconciler : detached</span><span class="rs">OFFLINE</span></div>
+          </div>
+        </div>
+        <div class="spanel metriccol">
+          <div class="shead" style="background:var(--periwinkle)">DIAGNOSTICS</div>
+          <div class="sbody">
+            <div class="mgroup">
+              <div class="mrow"><span class="mname">CPU LOAD</span><div class="mbar"><div class="fill" id="m1" style="background:var(--orange)"></div></div><span class="mval" id="v1">34%</span></div>
+              <div class="mrow"><span class="mname">MEMORY</span><div class="mbar"><div class="fill" id="m2" style="background:var(--lavender)"></div></div><span class="mval" id="v2">61%</span></div>
+              <div class="mrow"><span class="mname">SUBAGENT QUEUE</span><div class="mbar"><div class="fill" id="m3" style="background:var(--blue)"></div></div><span class="mval" id="v3">3</span></div>
+              <div class="mrow"><span class="mname">MCP ENDPOINTS</span><div class="mbar"><div class="fill" id="m4" style="background:var(--periwinkle)"></div></div><span class="mval" id="v4">10</span></div>
+              <div class="mrow"><span class="mname">TOKEN RATE</span><div class="mbar"><div class="fill" id="m5" style="background:var(--coral)"></div></div><span class="mval" id="v5">812/s</span></div>
+              <div class="mrow"><span class="mname">SPEND TODAY</span><div class="mbar"><div class="fill" id="m6" style="background:var(--gold)"></div></div><span class="mval" id="v6">$18.42</span></div>
+            </div>
+            <div class="mgroup">
+              <div class="mrow" style="margin-bottom:4px"><span class="mname" style="color:var(--peach);font-weight:700">MODEL CATALOG</span></div>
+              <div class="runner"><span class="dot live"></span><span class="rn">system.ai.claude&#8209;opus&#8209;4&#8209;8 [1m]</span><span class="rs">DEFAULT</span></div>
+              <div class="runner"><span class="dot live"></span><span class="rn">system.ai.glm&#8209;5&#8209;3&#8209;flash</span><span class="rs">ACTIVE</span></div>
+              <div class="runner"><span class="dot"></span><span class="rn">system.ai.claude&#8209;sonnet&#8209;5&#8209;5</span><span class="rs">STANDBY</span></div>
+              <div class="runner"><span class="dot"></span><span class="rn">system.ai.claude&#8209;haiku&#8209;5&#8209;5</span><span class="rs">STANDBY</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- BOTTOM ELBOW -->
+  <div class="elbow-b"></div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <span class="seg">LCARS 47</span>
+    <div class="blinkblock"></div>
+    <span class="seg" id="ftrState">ACCESS GRANTED : OMNIGENT BRIDGE</span>
+    <span class="sp"></span>
+    <button class="snd" id="sndBtn">AUDIO : OFF</button>
+    <span class="clockbox" id="clock">14:32:07</span>
+  </div>
+
+</div>
+
+<!-- NEW SESSION PICKER -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="mhead" style="background:var(--peach)">
+      <svg width="40" height="40" viewBox="0 0 120 120"><use href="#star5" transform="translate(60 64) rotate(-8)" fill="#E84D8A" stroke="#E84D8A" stroke-width="10" stroke-linejoin="round"/></svg>
+      <span>INITIATE NEW SESSION</span>
+      <span class="sp"></span>
+      <button class="mclose" id="mClose">DISMISS</button>
+    </div>
+    <div class="mbody">
+      <div class="mcol">
+        <div class="flabel">AGENT</div>
+        <div id="pickAgents" style="display:flex;flex-direction:column;gap:4px"></div>
+      </div>
+      <div class="mcol">
+        <div class="flabel">MODEL</div>
+        <div id="pickModels" style="display:flex;flex-direction:column;gap:4px"></div>
+      </div>
+      <div class="mcol">
+        <div class="flabel">REASONING EFFORT</div>
+        <div id="pickEffort" style="display:flex;flex-direction:column;gap:4px"></div>
+      </div>
+    </div>
+    <div class="mfoot">
+      <span class="flabel" style="margin:0">WORKSPACE</span>
+      <input id="pickWs" value="~/code" spellcheck="false">
+      <span class="flabel" style="margin:0">BUDGET $</span>
+      <input id="pickBudget" value="10.00" spellcheck="false">
+      <span style="flex:1"></span>
+      <button class="btn" id="mCancel" style="background:var(--coral)">CANCEL</button>
+      <button class="btn" id="mLaunch" style="background:var(--tangerine)">LAUNCH</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===== mock data ===== */
+const SESSIONS = [
+  ["conv_9f3a21","claude","~/code/bradesco-migration-control-plane","RUNNING","glm-5-3-flash","$4.18","2 MIN AGO"],
+  ["conv_7e88c4","claude","~/code/lcars-omnigent","RUNNING","claude-opus-4-8","$0.94","NOW"],
+  ["conv_5b1d09","researcher","~/code/fdehub","IDLE","claude-opus-4-8","$12.60","3 H AGO"],
+  ["conv_4a77e1","fevm-deployer","fevm-supply-chain-tower","FAILED","glm-5-3-flash","$0.31","4 H AGO"],
+  ["conv_3c92f7","claude","~/code/diagnostico-estate-sas","COMPLETE","glm-5-3-flash","$8.77","YESTERDAY"],
+  ["conv_2d15aa","researcher","~/code/sas-migration-tracker-noapp","IDLE","claude-sonnet-5-5","$2.05","YESTERDAY"],
+  ["conv_1f603b","claude","~/code/post-project-qa-agent","COMPLETE","claude-opus-4-8","$21.44","2026-10-14"],
+  ["conv_e81c52","reconciler","fevm-supply-chain-tower","FAILED","glm-5-3-flash","$0.02","2026-10-13"],
+  ["conv_d44a98","claude","~/code/telecom-b2b-migration-demo","COMPLETE","glm-5-3-flash","$1.19","2026-10-12"],
+  ["conv_b7016e","researcher","~/Brain/00-Brain","IDLE","claude-sonnet-5-5","$0.58","2026-10-11"],
+  ["conv_a29f11","claude","~/code/itau-lf-uc-foundation","COMPLETE","claude-opus-4-8","$6.90","2026-10-10"],
+  ["conv_88ee03","fevm-deployer","fevm-supply-chain-tower","COMPLETE","glm-5-3-flash","$3.42","2026-10-09"],
+];
+
+const AGENTS = [
+  ["CLAUDE CODE","claude-code","v2.1.299","glm-5-3-flash","10 MCP : glean, jira, slack, confluence, logfood, lakedraw, web-search, chrome, genie, omnigent","READY","var(--lavender)"],
+  ["RESEARCHER","sys_session subagent","sys v1","claude-opus-4-8","read-only explore : brain, drive, slack, github kb","READY","var(--blue)"],
+  ["FEVM DEPLOYER","sys_session subagent","sys v1","glm-5-3-flash","databricks app deploy : fevm-supply-chain-tower, gtm-ai-fde","READY","var(--periwinkle)"],
+  ["RECONCILER","data-contract-reconciler","v0.9","glm-5-3-flash","contract vs DDL vs EDC vs repo : fuzzy + LLM match","DETACHED","var(--coral)"],
+  ["QA POSTPROJECT","post-project-qa-agent","v1.1","claude-sonnet-5-5","RSA engagement Q/A : project kb + platform scope","READY","var(--gold)"],
+  ["OMNIGENT HOST","local runtime","6767","n/a","sessions, runners, agents, evals : sig auth","ONLINE","var(--orange)"],
+];
+
+const REGISTRIES = {
+  evals: {
+    head: "EVAL RUNS", color: "var(--gold)", count: "47 RUNS : 41 PASS : 6 FAIL",
+    rows: [
+      ["EVAL-047","GOLDEN BUNDLE : CLAUDE CODE","PASS"],
+      ["EVAL-046","GOLDEN BUNDLE : GLM FLASH","PASS"],
+      ["EVAL-045","POLICY : BLAST RADIUS GATE","FAIL"],
+      ["EVAL-044","ROUTER : DISCLOSURE TURN","PASS"],
+      ["EVAL-043","COST BUDGET : $5 SOFT CAP","PASS"],
+      ["EVAL-042","APPROVAL GATE : GIT PUSH","FAIL"],
+    ]
+  },
+  scheduled: {
+    head: "SCHEDULED TASKS", color: "var(--coral)", count: "3 TASKS : 2 ACTIVE : 1 PAUSED",
+    rows: [
+      ["NIGHTLY TRIAGE","DAILY 02:30 : AGENT TRIAGE","ACTIVE"],
+      ["WEEKLY STATUS","MON 08:00 : REPORT BUILD","ACTIVE"],
+      ["BRAIN CAPTURE","FRI 17:00 : SESSION DIGEST","PAUSED"],
+    ]
+  },
+  archive: {
+    head: "ARCHIVED SESSIONS", color: "var(--iceblue)", count: "450 CONVERSATIONS",
+    rows: [
+      ["RANGE","2026-03-02 THRU 2026-09-16","450"],
+      ["STORAGE","~/.omnigent/chat.db : LOCAL","OK"],
+      ["EXPORT","OMNIGENT SESSION EXPORT : JSON","READY"],
+      ["RETENTION","UNBOUNDED : LOCAL STORE","OK"],
+    ]
+  }
+};
+
+/* ===== view switching ===== */
+const titles = {sessions:"OMNIGENT ACCESS : SESSIONS",console:"OMNIGENT ACCESS : CONSOLE",agents:"OMNIGENT ACCESS : AGENT REGISTRY",status:"OMNIGENT ACCESS : SYSTEM STATUS"};
+let regMode = false;
+function exitRegMode(){
+  regMode = false;
+  document.getElementById("regBtn").classList.remove("active");
+  document.getElementById("regPanel").classList.remove("on");
+  document.getElementById("sessTableWrap").style.display = "flex";
+  document.getElementById("sessHead").style.display = "flex";
+  document.getElementById("colFolders").style.display = "block";
+  document.getElementById("hdrTitle").textContent = titles.sessions;
+}
+document.querySelectorAll(".rail .btn[data-view]").forEach(b=>{
+  b.addEventListener("click",()=>{
+    document.querySelectorAll(".rail .btn").forEach(x=>x.classList.remove("active"));
+    b.classList.add("active");
+    document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+    document.getElementById("view-"+b.dataset.view).classList.add("active");
+    if(b.dataset.view === "sessions" && regMode) exitRegMode();
+    else if(b.dataset.view !== "sessions") exitRegMode();
+    document.getElementById("hdrTitle").textContent = titles[b.dataset.view];
+    beep(520);
+  });
+});
+
+/* registries rail item : expands into second column + main panel */
+const regBtn = document.getElementById("regBtn");
+regBtn.addEventListener("click",()=>{
+  if(regMode){ // toggle back
+    document.querySelector('.btn[data-view="sessions"]').click();
+    return;
+  }
+  regMode = true;
+  document.querySelectorAll(".rail .btn").forEach(x=>x.classList.remove("active"));
+  regBtn.classList.add("active");
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  document.getElementById("view-sessions").classList.add("active");
+  document.getElementById("colFolders").style.display = "none";
+  document.getElementById("sessTableWrap").style.display = "none";
+  document.getElementById("sessHead").style.display = "none";
+  document.getElementById("regPanel").classList.add("on");
+  document.getElementById("hdrTitle").textContent = "OMNIGENT ACCESS : REGISTRIES";
+  selRegistry(selRegistry); // render current selection
+  beep(560);
+});
+
+/* ===== sessions table + folder filter ===== */
+let sessFilter = null;
+function renderSessions(){
+  const sb = document.getElementById("sessBody");
+  sb.innerHTML = "";
+  const rows = SESSIONS.filter(r=>!sessFilter || r[2].includes(sessFilter));
+  rows.forEach(r=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="id">${r[0]}</td><td class="agent">${r[1]}</td><td class="ws">${r[2]}</td>`+
+      `<td><span class="pill st-${r[3]}">${r[3]}</span></td><td>${r[4]}</td><td class="cost">${r[5]}</td><td>${r[6]}</td>`;
+    tr.addEventListener("click",()=>beep(440));
+    sb.appendChild(tr);
+  });
+  document.getElementById("sessCnt").textContent =
+    `462 CONVERSATIONS ON FILE : ${rows.length} SHOWN` + (sessFilter ? ` : FILTER ${sessFilter}` : "");
+}
+renderSessions();
+
+/* folders : derived from session workspaces */
+const folderList = document.getElementById("folderList");
+const folders = {};
+SESSIONS.forEach(r=>folders[r[2]]=(folders[r[2]]||0)+1);
+Object.entries(folders).sort((a,b)=>b[1]-a[1]).forEach(([ws,n])=>{
+  const name = ws.replace(/^~\/code\//,"").replace(/^~\//,"");
+  const b = document.createElement("button");
+  b.className = "fbtn";
+  b.style.background = "var(--periwinkle)";
+  b.textContent = `${name} : ${n}`;
+  b.title = ws;
+  b.addEventListener("click",()=>{
+    if(sessFilter === ws){ sessFilter = null; b.classList.remove("sel"); }
+    else{
+      sessFilter = ws;
+      folderList.querySelectorAll(".fbtn").forEach(x=>x.classList.remove("sel"));
+      b.classList.add("sel");
+    }
+    renderSessions(); beep(480);
+  });
+  folderList.appendChild(b);
+});
+
+/* ===== registries panel ===== */
+let selReg = "evals";
+function renderRegistry(key){
+  const R = REGISTRIES[key];
+  const p = document.getElementById("regPanel");
+  p.innerHTML = `<div class="rpanel"><div class="rhead" style="background:${R.color}"><span>${R.head}</span><span class="rc">${R.count}</span></div>`+
+    R.rows.map(r=>`<div class="rrow"><span class="rk">${r[0]}</span><span style="flex:1">${r[1]}</span>`+
+      `<span class="${r[2]==="PASS"||r[2]==="ACTIVE"||r[2]==="OK"||r[2]==="READY"?"ok":(r[2]==="FAIL"?"bad":"")}">${r[2]}</span></div>`).join("")+
+    `</div>`;
+}
+function selRegistryFn(key){
+  selReg = key;
+  document.querySelectorAll("#colRegistries .fbtn").forEach(x=>{
+    x.classList.toggle("sel", x.dataset.reg === key);
+  });
+  renderRegistry(key);
+}
+document.querySelectorAll("#colRegistries .fbtn").forEach(b=>{
+  b.addEventListener("click",()=>{
+    selRegistryFn(b.dataset.reg);
+    if(!regMode){ regBtn.click(); }
+    beep(500);
+  });
+});
+selRegistryFn("evals");
+
+/* ===== agents grid ===== */
+const ag = document.getElementById("agentGrid");
+AGENTS.forEach(a=>{
+  const d = document.createElement("div");
+  d.className = "acard";
+  d.innerHTML = `<div class="ahead" style="background:${a[6]}"><span>${a[0]}</span><span class="v">${a[2]}</span></div>`+
+    `<div class="abody">`+
+    `<div class="row"><span class="k">HARNESS</span><span class="v2">${a[1]}</span></div>`+
+    `<div class="row"><span class="k">MODEL</span><span class="v2">${a[3]}</span></div>`+
+    `<div class="row"><span class="k">BINDINGS</span><span class="v2">${a[4]}</span></div>`+
+    `<div class="row"><span class="k">STATE</span><span class="v2" style="color:${a[5]==="READY"||a[5]==="ONLINE"?"#88BB88":"#CC6666"};font-weight:700">${a[5]}</span></div>`+
+    `</div><button class="launch" style="background:${a[6]}">LAUNCH SESSION</button>`;
+  d.querySelector(".launch").addEventListener("click",()=>openPicker(a[0]));
+  ag.appendChild(d);
+});
+
+/* ===== console input ===== */
+const msgs = document.getElementById("msgs");
+const cmdline = document.getElementById("cmdline");
+function send(){
+  const t = cmdline.value.trim();
+  if(!t) return;
+  cmdline.value = "";
+  const u = document.createElement("div");
+  u.className = "msg";
+  u.innerHTML = `<div class="who user">USER</div><div class="body"></div>`;
+  u.querySelector(".body").textContent = t;
+  msgs.appendChild(u);
+  const a = document.createElement("div");
+  a.className = "msg";
+  a.innerHTML = `<div class="who assistant">OMNIGENT</div><div class="body"><span class="stream"></span><span class="cursor"></span></div>`;
+  msgs.appendChild(a);
+  msgs.scrollTop = msgs.scrollHeight;
+  typewrite(a.querySelector(".stream"),
+    "DIRECTIVE RECEIVED. Dispatching to session agent. Awaiting runner acknowledgement. Mock build : live wiring to 127.0.0.1:6767 pending.");
+  beep(600);
+}
+document.getElementById("sendBtn").addEventListener("click",send);
+cmdline.addEventListener("keydown",e=>{if(e.key==="Enter")send();});
+
+function typewrite(el,text){
+  let i=0;
+  const iv = setInterval(()=>{
+    el.textContent += text[i++];
+    msgs.scrollTop = msgs.scrollHeight;
+    if(i>=text.length) clearInterval(iv);
+  },22);
+}
+
+/* ===== new session picker ===== */
+const PICK_AGENTS = [
+  ["claude-code","DEFAULT : 10 MCP BINDINGS","var(--lavender)"],
+  ["researcher","READ-ONLY EXPLORE SUBAGENT","var(--blue)"],
+  ["fevm-deployer","DATABRICKS APP DEPLOY","var(--periwinkle)"],
+  ["qa-postproject","RSA ENGAGEMENT Q/A","var(--gold)"],
+  ["reconciler","CONTRACT RECONCILIATION","var(--coral)"],
+];
+const PICK_MODELS = [
+  ["system.ai.glm-5-3-flash","ACTIVE ENDPOINT","var(--periwinkle)"],
+  ["system.ai.claude-opus-4-8 [1m]","DEFAULT","var(--periwinkle)"],
+  ["system.ai.claude-sonnet-5-5","STANDBY","var(--periwinkle)"],
+  ["system.ai.claude-haiku-5-5","STANDBY","var(--periwinkle)"],
+];
+const PICK_EFFORT = [
+  ["default (none)","HARNESS DEFAULT","var(--blue)"],
+  ["low","FAST ITERATION","var(--blue)"],
+  ["medium","BALANCED","var(--blue)"],
+  ["high","DEEP REASONING","var(--blue)"],
+  ["xhigh","MAXIMUM DEPTH","var(--blue)"],
+  ["max","NO CEILING","var(--blue)"],
+];
+let selAgent = "claude-code", selModel = "system.ai.glm-5-3-flash", selEffort = "default (none)";
+
+function buildPick(id, items, get, set){
+  const box = document.getElementById(id);
+  box.innerHTML = "";
+  items.forEach(([label,desc,color])=>{
+    const b = document.createElement("button");
+    b.className = "pickb" + (get()===label ? " sel" : "");
+    b.style.background = color;
+    b.innerHTML = `<span class="pd">${desc}</span>${label}`;
+    b.addEventListener("click",()=>{ set(label); buildPick(id,items,get,set); beep(500); });
+    box.appendChild(b);
+  });
+}
+function refreshPicks(){
+  buildPick("pickAgents",PICK_AGENTS,()=>selAgent,v=>selAgent=v);
+  buildPick("pickModels",PICK_MODELS,()=>selModel,v=>selModel=v);
+  buildPick("pickEffort",PICK_EFFORT,()=>selEffort,v=>selEffort=v);
+}
+refreshPicks();
+
+const overlay = document.getElementById("overlay");
+function openPicker(agentPrefill){
+  if(agentPrefill){
+    const hit = PICK_AGENTS.find(a=>a[0].toLowerCase().startsWith(String(agentPrefill).toLowerCase().slice(0,5)));
+    if(hit) selAgent = hit[0];
+    refreshPicks();
+  }
+  overlay.classList.add("open");
+  document.getElementById("pickWs").focus();
+  beep(700);
+}
+function closePicker(){ overlay.classList.remove("open"); beep(300); }
+document.getElementById("newBtn").addEventListener("click",()=>openPicker());
+document.getElementById("mClose").addEventListener("click",closePicker);
+document.getElementById("mCancel").addEventListener("click",closePicker);
+overlay.addEventListener("click",e=>{ if(e.target===overlay) closePicker(); });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape" && overlay.classList.contains("open")) closePicker(); });
+
+document.getElementById("mLaunch").addEventListener("click",()=>{
+  const id = "conv_" + Math.random().toString(16).slice(2,8);
+  const ws = document.getElementById("pickWs").value.trim() || "~/code";
+  const model = selModel.replace("system.ai.","").replace(" [1m]","");
+  SESSIONS.unshift([id,selAgent.split("-")[0],ws,"RUNNING",model,"$0.00","NOW"]);
+  renderSessions();
+  closePicker();
+  if(regMode) exitRegMode();
+  document.querySelector('.btn[data-view="sessions"]').click();
+  beep(880);
+});
+
+/* ===== clocks : stardate + time ===== */
+function pad(n){return String(n).padStart(2,"0")}
+function tick(){
+  const now = new Date();
+  const start = new Date(now.getFullYear(),0,1);
+  const doy = (now - start)/86400000;
+  const sd = 41000 + (doy/365)*1000 + (now.getHours()/24);
+  document.getElementById("stardate").textContent = "SD " + sd.toFixed(1);
+  document.getElementById("clock").textContent =
+    pad(now.getHours())+":"+pad(now.getMinutes())+":"+pad(now.getSeconds());
+}
+tick(); setInterval(tick,1000);
+
+/* ===== animated meters ===== */
+function jitter(id,lo,hi,suffix){
+  const v = lo + Math.random()*(hi-lo);
+  const el = document.getElementById(id);
+  const bar = document.getElementById(id.replace("v","m"));
+  if(!bar) return;
+  bar.style.transition="width 1s ease";bar.style.width=Math.min(v,100)+"%";
+  el.textContent = (suffix==="$" ? "$"+v.toFixed(2) : Math.round(v)+(suffix||""));
+}
+function meters(){
+  jitter("v1",18,52,"%");jitter("v2",45,72,"%");jitter("v3",0,6,"");
+  jitter("v4",7,10,"");jitter("v5",300,1600,"/s");jitter("v6",8,24,"$");
+}
+setTimeout(meters,150);setInterval(meters,2500);
+
+/* ===== LCARS audio blips (WebAudio, default off) ===== */
+let sndOn = false, actx = null;
+const sndBtn = document.getElementById("sndBtn");
+sndBtn.addEventListener("click",()=>{
+  sndOn = !sndOn;
+  sndBtn.textContent = "AUDIO : " + (sndOn?"ON":"OFF");
+  if(sndOn) beep(760);
+});
+function beep(freq){
+  if(!sndOn) return;
+  actx = actx || new (window.AudioContext||window.webkitAudioContext)();
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type="square"; o.frequency.value=freq;
+  g.gain.setValueAtTime(0.06,actx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.0001,actx.currentTime+0.09);
+  o.connect(g); g.connect(actx.destination);
+  o.start(); o.stop(actx.currentTime+0.1);
+}
+</script>
+</body>
+</html>
