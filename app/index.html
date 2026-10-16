@@ -1039,7 +1039,8 @@ function renderTranscript(items){
         div.querySelector(".body").innerHTML = mdToHtml(esc(text));
         div.style.cursor = "pointer";
         div.title = "CLICK : OPEN THIS TURN'S LIVE OUTPUT";
-        div.addEventListener("click", ()=>{
+        div.addEventListener("click", (e)=>{
+          if(e.target && e.target.closest && e.target.closest("a")) return;  /* links navigate, not turn view */
           if(String(window.getSelection()).length) return;  /* text selection, not a click */
           openTurnStream(i);
         });
