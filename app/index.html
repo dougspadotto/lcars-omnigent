@@ -984,6 +984,7 @@ function renderTranscript(items){
   if(last){
     last.querySelector(".body").insertAdjacentHTML("beforeend", `<span class="cursor"></span>`);
   }
+  if(askStable && askCardEl) box.appendChild(askCardEl);
   box.scrollTop = box.scrollHeight;
 }
 
@@ -1404,7 +1405,11 @@ function stopTermFeed(){
     try{ state.termWs.onclose = null; state.termWs.close(); }catch(e){}
     state.termWs = null;
   }
+  if(askScanTimer){ clearInterval(askScanTimer); askScanTimer = null; }
   if(feedTerm){ try{ feedTerm.dispose(); }catch(e){} feedTerm = null; }
+  state.feedMeta = null;
+  state.askSig = null; state.askStreak = 0;
+  hideAsk();
   state.feedBuf = "";
 }
 function feedWrite(data){
@@ -1441,6 +1446,7 @@ async function startTermFeed(id, force){
     if(!t){ feedState("NO MAIN TERMINAL"); return; }
     const meta = t.metadata || {};
     const tid = t.resource_id || t.id || (t.resource && t.resource.id);
+    state.feedMeta = meta;
     /* the viewer cannot reflow the pane (read-only attach is ignore-size),
        so xterm must render at the pane's own grid or tmux cursor addressing
        lands on the wrong rows and the picture garbles */
@@ -1478,7 +1484,11 @@ async function startTermFeed(id, force){
     }catch(e){ feedState("WS ERROR"); return; }
     ws.binaryType = "arraybuffer";
     state.termWs = ws;
-    ws.onopen = ()=>{ if(state.current===id) feedState("LIVE"); };
+    ws.onopen = ()=>{
+      if(state.current!==id) return;
+      feedState("LIVE");
+      if(!askScanTimer) askScanTimer = setInterval(scanAsk, 1200);
+    };
     ws.onmessage = ev=>{
       if(state.current !== id) return;
       if(typeof ev.data === "string"){
@@ -1504,6 +1514,148 @@ $id("livefeed").addEventListener("toggle", ()=>{
     stopTermFeed(); feedState("DETACHED");
   }
 });
+
+/* ---------- input-request relay : prompt on the pane -> card in the main screen ---------- */
+/* When the harness stops for information in the terminal (question menu,
+   permission or plan prompt), the card lets the user answer from the main
+   screen; the answer is injected into the pane as keystrokes via the
+   bridge's tmux send-keys channel. Options press their digit then Enter:
+   whichever way the menu behaves (select-on-digit or select+submit) it
+   resolves correctly, and a stray Enter on an empty input is a no-op. */
+let askScanTimer = null, askCardEl = null, askStable = null;
+
+function hexOf(str){
+  return [...new TextEncoder().encode(str)].map(b=>b.toString(16).padStart(2,"0")).join(" ");
+}
+async function tmuxSendHex(hex){
+  const m = state.feedMeta;
+  if(!m) return false;
+  try{
+    const r = await fetch("/api/tmux-send", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({socket: m.tmux_socket, target: m.tmux_target, hex}),
+    });
+    const j = await r.json();
+    return !!j.sent;
+  }catch(e){ return false; }
+}
+function viewportLines(){
+  if(!feedTerm) return null;
+  try{
+    const buf = feedTerm.buffer.active, rows = feedTerm.rows, total = buf.length;
+    const out = [];
+    for(let y = Math.max(0, total - rows); y < total; y++){
+      const l = buf.getLine(y);
+      out.push(l ? l.translateToString(true) : "");
+    }
+    return out;
+  }catch(e){ return null; }
+}
+function cleanPane(s){
+  return s.replace(/[│╭╮╰╯─━|]+/g," ").replace(/\s+/g," ").trim();
+}
+const ASK_TRIGGER = /(do you want|would you like|how (do|would) you|which option|select (an|one|a)|choose (an|one|a)|your (choice|answer|response)|proceed\?|answer below|freeform)/i;
+function detectPrompt(lines){
+  if(!lines) return null;
+  const optRe = /^\s*[│|]?\s*[❯▸]?\s*(\d)[.)]\s+(.+?)\s*[│|]*\s*$/;
+  const idx = [];
+  lines.forEach((l,i)=>{ if(optRe.test(l)) idx.push(i); });
+  if(idx.length < 2) return null;
+  if(!lines.some(l=>/[❯▸]/.test(l))) return null; /* menu cursor present */
+  const first = idx[0];
+  /* the question may wrap across several lines inside its box : walk up
+     over padding rows, stop at the box border, join the question lines */
+  const qs = [];
+  for(let i = first-1; i >= 0 && i > first-14 && qs.length < 3; i--){
+    if(/^\s*[╭╰╯╮┌└┘┐─━+]+\s*$/.test(lines[i])) break;
+    const c = cleanPane(lines[i]);
+    if(!c) continue;
+    qs.unshift(c);
+    if(qs.length >= 2 && (c.includes("?") || ASK_TRIGGER.test(c))) break;
+  }
+  const question = qs.join(" ");
+  if(!question) return null;
+  const opts = [];
+  idx.forEach(i=>{
+    const m = lines[i].match(optRe);
+    if(m) opts.push({num: +m[1], label: cleanPane(m[2]).slice(0,120)});
+  });
+  if(opts.length < 2) return null;
+  return {question: question.slice(0,200), options: opts};
+}
+function hideAsk(){
+  askStable = null;
+  if(askCardEl && askCardEl.parentNode) askCardEl.parentNode.removeChild(askCardEl);
+}
+function showAsk(det){
+  askStable = det;
+  if(!askCardEl){
+    askCardEl = document.createElement("div");
+    askCardEl.className = "msg";
+    askCardEl.id = "askCard";
+  }
+  askCardEl.innerHTML = `<div class="who system">INPUT REQUIRED</div><div class="body" style="font-family:var(--font);white-space:normal"></div>`;
+  const body = askCardEl.querySelector(".body");
+  const q = document.createElement("div");
+  q.textContent = det.question;
+  q.style.cssText = "color:#ffd59a;font-weight:700;margin-bottom:6px";
+  body.appendChild(q);
+  det.options.forEach(o=>{
+    const b = document.createElement("button");
+    b.style.cssText = "display:block;width:100%;text-align:left;margin:3px 0;padding:6px 12px;font-size:12px;background:#1a2438;color:#c8d4f0;border:1px solid #2a3a55;border-radius:8px;cursor:pointer;font-family:var(--font);letter-spacing:.04em";
+    b.textContent = o.num + " : " + o.label;
+    b.addEventListener("click", async ()=>{
+      b.disabled = true;
+      await tmuxSendHex(hexOf(String(o.num)) + " 0d");
+      hideAsk();
+    });
+    body.appendChild(b);
+  });
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex;gap:6px;margin-top:6px";
+  const inp = document.createElement("input");
+  inp.placeholder = "OR TYPE A REPLY";
+  inp.style.cssText = "flex:1;background:#000;border:1px solid #2a3a55;border-radius:8px;color:#dfe2f2;font-family:var(--mono);font-size:12px;padding:5px 8px";
+  const mk = (label, fn) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.style.cssText = "padding:5px 14px;font-size:12px;background:#2a1a08;color:var(--tangerine);border:1px solid #4a3418;border-radius:8px;cursor:pointer;font-family:var(--font);font-weight:700;letter-spacing:.08em";
+    b.addEventListener("click", fn);
+    return b;
+  };
+  const doSend = async ()=>{
+    const v = inp.value.trim();
+    if(!v) return;
+    inp.disabled = true;
+    await tmuxSendHex(hexOf(v) + " 0d");
+    hideAsk();
+  };
+  inp.addEventListener("keydown", e=>{ if(e.key === "Enter") doSend(); });
+  row.appendChild(inp);
+  row.appendChild(mk("SEND", doSend));
+  row.appendChild(mk("ESC", async ()=>{ await tmuxSendHex("1b"); hideAsk(); }));
+  body.appendChild(row);
+  const box = $id("msgs");
+  if(askCardEl.parentNode !== box) box.appendChild(askCardEl);
+  box.scrollTop = box.scrollHeight;
+}
+function scanAsk(){
+  if(!state.termWs || !feedTerm || !window.Terminal) return;
+  const det = detectPrompt(viewportLines());
+  if(det){
+    const sig = JSON.stringify(det);
+    if(sig === state.askSig) state.askStreak = (state.askStreak||0) + 1;
+    else { state.askSig = sig; state.askStreak = 1; }
+    /* two consecutive identical scans : a real waiting prompt, not one
+       repaint frame of the TUI */
+    if(state.askStreak >= 2 && askStable === null) showAsk(det);
+    else if(state.askStreak >= 2 && askStable !== null) askStable = det;
+  } else {
+    state.askSig = null; state.askStreak = 0;
+    if(askStable !== null) hideAsk();
+  }
+}
 
 /* ---------- clocks ---------- */
 function pad(n){return String(n).padStart(2,"0")}

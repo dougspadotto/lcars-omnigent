@@ -58,6 +58,27 @@ def tmux_geometry(socket_path, target):
         return None
 
 
+# Answering an in-pane prompt from the browser relays keystrokes: hex bytes
+# per tmux send-keys -H (one byte per token), capped, Omnigent sockets only.
+HEX_RE = re.compile(r"^(?:[0-9a-fA-F]{2})(?:\s+[0-9a-fA-F]{2}){0,95}$")
+
+
+def tmux_send(socket_path, target, hex_str):
+    if not TMUX_SOCKET_RE.search(socket_path) or not os.path.exists(socket_path):
+        return False
+    tmux = shutil.which("tmux")
+    if not tmux or not target or not HEX_RE.match(hex_str or ""):
+        return False
+    try:
+        out = subprocess.run(
+            [tmux, "-S", socket_path, "send-keys", "-t", target, "-H", *hex_str.split()],
+            capture_output=True, text=True, timeout=5,
+        )
+        return out.returncode == 0
+    except Exception:
+        return False
+
+
 class BridgeHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=ROOT, **kwargs)
@@ -213,7 +234,24 @@ class BridgeHandler(SimpleHTTPRequestHandler):
             super().do_GET()
 
     def do_POST(self):
-        if self.path.startswith("/api/"):
+        if self.path == "/api/tmux-send":
+            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                body = json.loads(self.rfile.read(length) or b"{}")
+            except Exception:
+                body = {}
+            ok = tmux_send(
+                str(body.get("socket") or ""),
+                str(body.get("target") or ""),
+                str(body.get("hex") or ""),
+            )
+            resp = b'{"sent":true}' if ok else b'{"sent":false}'
+            self.send_response(200 if ok else 400)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+        elif self.path.startswith("/api/"):
             self._forward("POST")
         else:
             self.send_error(405)
