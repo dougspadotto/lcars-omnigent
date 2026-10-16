@@ -910,8 +910,10 @@ async function pollTranscript(){
   state.lastPollAt = Date.now();
   if(!state.current) return;
   try{
-    const d = await api(`/sessions/${state.current}/items?limit=200`);
-    const items = d.data || [];
+    /* newest page : default ordering returns the OLDEST items, which left
+       a re-bound long session showing a transcript hundreds of items stale */
+    const d = await api(`/sessions/${state.current}/items?limit=200&order=desc`);
+    const items = (d.data || []).reverse();
     const prev = state.lastItems;
     /* merge, never replace : the SSE stream can deliver a fresh item
        (e.g. the final message at turn end) before the batch mirror has
@@ -1821,12 +1823,22 @@ function scanAsk(){
 
 /* ---------- clocks ---------- */
 function pad(n){return String(n).padStart(2,"0")}
+function stardate(now){
+  /* TNG reckoning : 1000 units per year, epoch 2323 (so 2364 = 41000.0,
+     TNG season 1). Modern dates are projected 340 years forward into the
+     TNG era, the fan-calculator convention, keeping the value positive
+     and five digits. */
+  const Y = now.getFullYear() + 340;
+  const start = new Date(now.getFullYear(), 0, 1);
+  const d = Math.floor((now - start)/86400000);   /* complete days, Jan 1 = 0 */
+  const f = (now.getHours()*3600 + now.getMinutes()*60 + now.getSeconds())/86400;
+  const y = now.getFullYear();
+  const D = ((y%4===0 && y%100!==0) || y%400===0) ? 366 : 365;
+  return 1000 * (Y - 2323 + (d + f)/D);
+}
 function tick(){
   const now = new Date();
-  const start = new Date(now.getFullYear(),0,1);
-  const doy = (now - start)/86400000;
-  const sd = 41000 + (doy/365)*1000 + (now.getHours()/24);
-  $id("stardate").textContent = "STARDATE " + sd.toFixed(1);
+  $id("stardate").textContent = "STARDATE " + stardate(now).toFixed(1);
   $id("clock").innerHTML = pad(now.getHours())+":"+pad(now.getMinutes())+":"+pad(now.getSeconds());
 }
 tick(); setInterval(tick,1000);
