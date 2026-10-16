@@ -95,13 +95,13 @@ body{
 .header .sd{
   background:var(--black);color:var(--peach);
   font-weight:700;font-size:20px;letter-spacing:.06em;
-  border-radius:16px;padding:4px 16px;white-space:nowrap;
+  border-radius:16px;padding:4px 16px;white-space:nowrap;flex:0 0 auto;
 }
-.header .sub{font-size:13px;font-weight:500;opacity:.75;white-space:nowrap}
+.header .sub{font-size:13px;font-weight:500;opacity:.75;white-space:nowrap;flex:0 0 auto}
 .newbtn{
   background:var(--tangerine);color:#000;border:none;border-radius:16px;
   font-family:var(--font);font-weight:700;font-size:16px;letter-spacing:.06em;
-  padding:7px 18px 5px;cursor:pointer;white-space:nowrap;
+  padding:7px 18px 5px;cursor:pointer;white-space:nowrap;flex:0 0 auto;
 }
 .newbtn:hover{filter:brightness(1.12)}
 .newbtn:active{filter:brightness(.85)}
@@ -758,7 +758,7 @@ async function boot(){
     await refreshAll();
     state.offline = false;
     $id("ftrState").textContent = "ACCESS GRANTED : OMNIGENT BRIDGE";
-    $id("hdrSub").textContent = state.host ? ("HOST " + (state.host.name||"").toUpperCase().slice(0,24)) : "HOST LOCAL";
+    $id("hdrSub").textContent = state.host ? ("HOST " + (state.host.name||"LOCAL").toUpperCase()) : "HOST LOCAL";
   }catch(e){
     state.offline = true;
     $id("ftrState").textContent = "BRIDGE DOWN : " + e.message;
