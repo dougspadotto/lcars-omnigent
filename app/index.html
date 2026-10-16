@@ -803,12 +803,18 @@ function renderSessions(){
   if(!state.foldersInit){
     state.projects.forEach(p=>OPEN_FOLDERS.add(p.id));
     OPEN_FOLDERS.add("__UNFILED__");
+    OPEN_FOLDERS.add("__ACTIVE__");
     state.foldersInit = true;
   }
   list.innerHTML = "";
+  const isPinned = s => !!(s.labels && s.labels["omnigent.pinned"]);
+  /* running and pinned sessions live outside the projects while active
+     and drop back to their original place once they stop */
   const byProject = new Map();
   const unfiled = [];
+  const active = [];
   state.sessions.forEach(s => {
+    if(s.status === "running" || isPinned(s)){ active.push(s); return; }
     const pid = s.project_id;
     if(pid && state.projects.some(p=>p.id===pid)){
       if(!byProject.has(pid)) byProject.set(pid, []);
@@ -817,7 +823,9 @@ function renderSessions(){
       unfiled.push(s);
     }
   });
-  const groups = state.projects.map(p => [p.id, (p.name||"project").toUpperCase(), byProject.get(p.id)||[], "var(--lavender)"]);
+  active.sort((a,b)=>(b.updated_at||0)-(a.updated_at||0));
+  const groups = [["__ACTIVE__", "ACTIVE", active, "var(--coral)"]];
+  groups.push(...state.projects.map(p => [p.id, (p.name||"project").toUpperCase(), byProject.get(p.id)||[], "var(--lavender)"]));
   groups.push(["__UNFILED__", "UNFILED", unfiled, "var(--amber)"]);
   groups.forEach(([key,label,arr,color])=>{
     const open = OPEN_FOLDERS.has(key);
@@ -1049,7 +1057,7 @@ function startLive(){
       try{
         const d = JSON.parse(ev.data);
         const s = state.sessions.find(x=>x.id===id);
-        if(s && d.status){ s.status = d.status; setConStatus(s); }
+        if(s && d.status){ s.status = d.status; setConStatus(s); renderSessions(); }
         if(state.current !== id) return;
         if(d.status === "running"){ startTermFeed(id); }
         else {
