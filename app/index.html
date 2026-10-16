@@ -312,9 +312,11 @@ details.exec .targ{
   display:flex;align-items:center;padding:0 14px;gap:10px;
 }
 .inputframe .prompt{color:var(--tangerine);font-weight:700;font-size:15px;letter-spacing:.05em;white-space:nowrap}
-.inputframe input{
+.inputframe textarea{
   flex:1;background:none;border:none;outline:none;color:#fff;
   font-family:var(--mono);font-size:14px;
+  resize:none;line-height:1.4;max-height:140px;overflow-y:auto;
+  padding:6px 0;
 }
 .sendbtn{
   font-family:var(--font);font-weight:700;font-size:16px;color:#000;background:var(--tangerine);
@@ -556,7 +558,7 @@ details.exec .targ{
             <div class="inputrow">
               <div class="inputframe">
                 <span class="prompt">&gt;</span>
-                <input id="cmdline" type="text" placeholder="ENTER DIRECTIVE : POSTS TO BOUND SESSION" autocomplete="off">
+                <textarea id="cmdline" rows="1" placeholder="ENTER DIRECTIVE : POSTS TO BOUND SESSION" autocomplete="off"></textarea>
               </div>
               <button class="sendbtn" id="sendBtn">TRANSMIT</button>
             </div>
@@ -1107,6 +1109,7 @@ async function send(){
   const text = box.value.trim();
   if(!text) return;
   box.value = "";
+  growCmd();
   if(!state.current){
     sysLine("NO SESSION BOUND : SELECT ONE IN THE SESSION REGISTRY FIRST.");
     return;
@@ -1887,7 +1890,16 @@ try{
 
 /* ---------- wire static buttons ---------- */
 $id("sendBtn").addEventListener("click", send);
-$id("cmdline").addEventListener("keydown", e=>{ if(e.key==="Enter") send(); });
+/* directive box : wraps instead of running off the edge */
+const cmdBox = $id("cmdline");
+function growCmd(){
+  cmdBox.style.height = "auto";
+  cmdBox.style.height = Math.min(cmdBox.scrollHeight, 140) + "px";
+}
+cmdBox.addEventListener("input", growCmd);
+cmdBox.addEventListener("keydown", e=>{
+  if(e.key === "Enter" && !e.shiftKey){ e.preventDefault(); send(); }
+});
 $id("purgeBtn").addEventListener("click", purgeCurrent);
 
 boot();
