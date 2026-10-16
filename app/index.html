@@ -880,12 +880,7 @@ async function bindSession(id){
   $id("sessStandby").style.display = "none";
   $id("sessConsole").style.display = "flex";
   $id("conTitle").textContent = (s.title || "(untitled)") + " : " + short(id);
-  $id("conStatus").textContent =
-    (s.status||"").toUpperCase() +
-    " : AGENT " + (s.agent_name || "unbound") +
-    " : MODEL " + modelOf(s) +
-    (s.reasoning_effort ? " : EFFORT " + s.reasoning_effort : "") +
-    " : " + shortWs(wsOf(s));
+  setConStatus(s);
   $id("msgs").innerHTML = `<div class="msg"><div class="who system">SYSTEM</div><div class="body">LOADING TRANSCRIPT&#8230;</div></div>`;
   state.lastItems = new Map();
   renderSessions();
@@ -894,7 +889,14 @@ async function bindSession(id){
   sfx.bind();
 }
 
+function setConStatus(s){
+  $id("conStatus").textContent =
+    (s.status||"").toUpperCase() +
+    " : AGENT " + (s.agent_name || "unbound") +
+    " : " + shortWs(wsOf(s));
+}
 async function pollTranscript(){
+  state.lastPollAt = Date.now();
   if(!state.current) return;
   try{
     const d = await api(`/sessions/${state.current}/items?limit=200`);
@@ -1016,22 +1018,50 @@ function renderTranscript(items){
 }
 
 function startLive(){
-  state.pollTimer = setInterval(()=>pollTranscript(), 8000);
+  stopLive();
+  const id = state.current;
+  /* slow safety net only : the SSE stream carries the real-time events */
+  state.pollTimer = setInterval(()=>pollTranscript(), 30000);
+  let lastActivity = 0, actTimer = null;
   try{
-    const es = new EventSource(`/api/v1/sessions/${state.current}/stream`);
+    const es = new EventSource(`/api/v1/sessions/${id}/stream`);
     state.es = es;
-    es.onmessage = ev => {
+    es.addEventListener("response.output_item.done", ev=>{
       try{
         const d = JSON.parse(ev.data);
-        const item = d.item || d.data && d.data.item;
+        const item = d.item || d;
         if(item && item.id){
           state.lastItems.set(item.id, item);
           renderTranscript([...state.lastItems.values()].sort((a,b)=>(a.created_at||0)-(b.created_at||0)));
+          sfx.live();
         }
       }catch(e){}
+    });
+    es.addEventListener("session.terminal.activity", ()=>{
+      lastActivity = Date.now();
+      const s = state.sessions.find(x=>x.id===id);
+      $id("conStatus").textContent = "GENERATING" + (s ? " : AGENT " + (s.agent_name||"") + " : " + shortWs(wsOf(s)) : "");
+      if(actTimer) clearTimeout(actTimer);
+      actTimer = setTimeout(()=>{ if(state.current===id){ const s2 = state.sessions.find(x=>x.id===id); if(s2) setConStatus(s2); } }, 5000);
+      /* transcript forwarder mirrors in batches : light throttled poll while active */
+      if(Date.now() - (state.lastPollAt||0) > 2500) pollTranscript();
+    });
+    es.addEventListener("session.status", ev=>{
+      try{
+        const d = JSON.parse(ev.data);
+        const s = state.sessions.find(x=>x.id===id);
+        if(s && d.status){ s.status = d.status; setConStatus(s); }
+      }catch(e){}
+    });
+    es.onerror = ()=>{
+      es.close();
+      if(state.es === es) state.es = null;
+      /* stream lost : fall back to fast polling */
+      if(!state.pollTimer) state.pollTimer = setInterval(()=>pollTranscript(), 5000);
     };
-    es.onerror = () => { es.close(); state.es = null; };
-  }catch(e){}
+  }catch(e){
+    state.pollTimer = setInterval(()=>pollTranscript(), 5000);
+  }
 }
 
 /* transmit */
