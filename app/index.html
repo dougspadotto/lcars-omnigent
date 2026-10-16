@@ -1727,7 +1727,9 @@ function detectPrompt(lines){
   const idx = [];
   lines.forEach((l,i)=>{ if(optRe.test(l)) idx.push(i); });
   if(idx.length < 2) return null;
-  if(!lines.some(l=>/[❯▸]/.test(l))) return null; /* menu cursor present */
+  /* the menu cursor must sit ON an option row : a bare ❯ is not evidence,
+     Claude Code also renders user messages with one */
+  if(!lines.some(l=>/^[│|]?\s*[❯▸]\s*\d[.)]/.test(l))) return null;
   const first = idx[0];
   /* the question may wrap across several lines inside its box : walk up
      over padding rows, stop at the box border, join the question lines */
@@ -1827,6 +1829,15 @@ function showAsk(det){
   row.appendChild(inp);
   row.appendChild(send);
   row.appendChild(esc);
+  const dis = document.createElement("button");
+  dis.textContent = "DISMISS";
+  dis.style.cssText = esc.style.cssText;
+  dis.title = "HIDE THIS PROMPT : it stays hidden until the screen shows a different one";
+  dis.addEventListener("click", ()=>{
+    state.askDismissedSig = state.askSig;
+    hideAsk();
+  });
+  row.appendChild(dis);
   body.appendChild(row);
   body.appendChild(status);
   const box = $id("msgs");
@@ -1842,10 +1853,19 @@ function scanAsk(){
     else { state.askSig = sig; state.askStreak = 1; }
     /* two consecutive identical scans : a real waiting prompt, not one
        repaint frame of the TUI */
-    if(state.askStreak >= 2 && askStable === null) showAsk(det);
-    else if(state.askStreak >= 2 && askStable !== null) askStable = det;
+  if(state.askStreak >= 2){
+    if(state.askSig === state.askDismissedSig){
+      /* dismissed by the user : stays hidden until the prompt changes */
+      if(askStable !== null){ askStable = det; }
+    } else if(askStable === null){
+      showAsk(det);
+    } else {
+      askStable = det;
+    }
+  }
   } else {
     state.askSig = null; state.askStreak = 0;
+    state.askDismissedSig = null;
     if(askStable !== null) hideAsk();
   }
 }
