@@ -7,12 +7,19 @@ signature. SSE responses are streamed through.
 
 Run:  python3 server.py   ->  http://127.0.0.1:6768
 """
+import base64
+import hashlib
 import os
+import socket
+import threading
 import urllib.error
 import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 OG_BASE = os.environ.get("OMNIGENT_SERVER", "http://127.0.0.1:6767").rstrip("/")
+OG_HOST = "127.0.0.1"
+OG_PORT = 6767
+WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 PORT = int(os.environ.get("LCARS_PORT", "6768"))
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app")
 SIG_PATH = os.path.expanduser("~/.omnigent/local_server.sig")
@@ -73,8 +80,91 @@ class BridgeHandler(SimpleHTTPRequestHandler):
             self.wfile.write(data)
             resp.close()
 
+    def _tunnel_ws(self):
+        """Raw WebSocket pass-through to the Omnigent server.
+
+        Terminates the downstream handshake ourselves, then pumps frames
+        verbatim in both directions. Frames are never parsed, so client
+        masking is preserved transparently.
+        """
+        path = self.path
+        if path.startswith("/api/"):
+            path = path[len("/api"):]
+        key = self.headers.get("Sec-WebSocket-Key")
+        if not key:
+            self.send_error(400, "missing Sec-WebSocket-Key")
+            return
+        try:
+            up = socket.create_connection((OG_HOST, OG_PORT), timeout=10)
+        except Exception as e:
+            self.send_error(502, f"omnigent unreachable: {e}")
+            return
+        req = (
+            f"GET {path} HTTP/1.1\r\n"
+            f"Host: {OG_HOST}:{OG_PORT}\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {key}\r\n"
+            "Sec-WebSocket-Version: 13\r\n"
+            f"X-Local-Server-Signature: {SIG}\r\n"
+            "X-Forwarded-Email: douglas.spadotto@databricks.com\r\n\r\n"
+        )
+        up.sendall(req.encode())
+        resp = b""
+        while b"\r\n\r\n" not in resp:
+            chunk = up.recv(4096)
+            if not chunk:
+                break
+            resp += chunk
+        head, _, rest = resp.partition(b"\r\n\r\n")
+        status_line = head.split(b"\r\n")[0]
+        if b" 101 " not in status_line:
+            self.send_response(502)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(head + rest)
+            up.close()
+            return
+        accept = base64.b64encode(
+            hashlib.sha1((key + WS_GUID).encode()).digest()
+        ).decode()
+        self.send_response(101, "Switching Protocols")
+        self.send_header("Upgrade", "websocket")
+        self.send_header("Connection", "Upgrade")
+        self.send_header("Sec-WebSocket-Accept", accept)
+        self.end_headers()
+        down = self.connection
+        if rest:
+            down.sendall(rest)
+
+        def pump(src, dst):
+            try:
+                while True:
+                    data = src.recv(65536)
+                    if not data:
+                        break
+                    dst.sendall(data)
+            except Exception:
+                pass
+            finally:
+                try:
+                    dst.shutdown(socket.SHUT_WR)
+                except Exception:
+                    pass
+
+        t1 = threading.Thread(target=pump, args=(down, up), daemon=True)
+        t2 = threading.Thread(target=pump, args=(up, down), daemon=True)
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+        up.close()
+
     def do_GET(self):
         if self.path == "/api" or self.path.startswith("/api/"):
+            if (self.headers.get("Upgrade") or "").lower() == "websocket":
+                self._tunnel_ws()
+                return
             self._forward("GET")
         else:
             super().do_GET()

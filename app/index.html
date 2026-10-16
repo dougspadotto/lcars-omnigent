@@ -546,6 +546,10 @@ details.exec.out{border-color:#1c2740}
               <span class="sp"></span>
               <button class="purgebtn" id="purgeBtn">PURGE</button>
             </div>
+            <details id="livefeed" class="exec" style="margin:8px 0 0">
+              <summary><span class="ename" style="color:var(--tangerine)">LIVE OUTPUT</span><span class="etag" id="livefeedState">DETACHED</span></summary>
+              <div class="targ" id="livefeedText" style="max-height:240px;overflow-y:auto"></div>
+            </details>
             <div class="msgs" id="msgs">
               <div class="msg"><div class="who system">SYSTEM</div><div class="body">Select a session in the folders to bind the console.</div></div>
             </div>
@@ -858,6 +862,7 @@ function renderSessions(){
 function stopLive(){
   if(state.pollTimer){ clearInterval(state.pollTimer); state.pollTimer = null; }
   if(state.es){ state.es.close(); state.es = null; }
+  stopTermFeed();
 }
 
 async function bindSession(id){
@@ -886,6 +891,7 @@ async function bindSession(id){
   renderSessions();
   await pollTranscript();
   startLive();
+  startTermFeed(id);
   sfx.bind();
 }
 
@@ -1415,6 +1421,82 @@ function toggleRail(){
 }
 $id("railTab").addEventListener("click", toggleRail);
 document.querySelector(".elbow-logo").addEventListener("click", toggleRail);
+
+/* ---------- live terminal feed (read-only WS attach) ---------- */
+function stopTermFeed(){
+  if(state.termWs){
+    try{ state.termWs.onclose = null; state.termWs.close(); }catch(e){}
+    state.termWs = null;
+  }
+  state.feedBuf = "";
+  const box = $id("livefeedText");
+  if(box) box.textContent = "";
+}
+function feedState(t){ const el = $id("livefeedState"); if(el) el.textContent = t; }
+function startTermFeed(id){
+  stopTermFeed();
+  feedState("CONNECTING…");
+  api(`/sessions/${id}/resources/terminals`).then(d=>{
+    if(state.current !== id) return;
+    const terms = d.data || d.terminals || [];
+    const t = terms.find(x => (x.resource && x.resource.type === "terminal")) || terms[0];
+    if(!t){ feedState("NO TERMINAL"); return; }
+    const meta = t.metadata || {};
+    const tid = t.resource_id || t.id || (t.resource && t.resource.id);
+    /* prefer the runner's loopback direct-attach listener (token in query,
+       same machine) : falls back to the server relay path otherwise */
+    let url = null;
+    if(meta.direct_attach_url){
+      try{
+        const u = new URL(meta.direct_attach_url);
+        url = `${u.protocol === "wss:" ? "wss" : "ws"}://${u.host}${u.pathname}${u.search}&read_only=true`;
+      }catch(e){}
+    }
+    if(!url && tid){
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      url = `${proto}://${location.host}/api/v1/sessions/${id}/resources/terminals/${tid}/attach?read_only=true`;
+    }
+    if(!url){ feedState("NO TERMINAL"); return; }
+    let ws;
+    try{
+      ws = new WebSocket(url);
+    }catch(e){ feedState("WS ERROR"); return; }
+    ws.binaryType = "arraybuffer";
+    state.termWs = ws;
+    ws.onopen = ()=>{ if(state.current===id) feedState("LIVE"); };
+    ws.onmessage = ev=>{
+      if(state.current !== id) return;
+      let txt = "";
+      if(typeof ev.data === "string"){
+        try{
+          const j = JSON.parse(ev.data);
+          if(typeof j.data === "string") txt = j.data;
+          else if(typeof j.output === "string") txt = j.output;
+          else if(typeof j.chunk === "string") txt = j.chunk;
+          else if(j.type) return;
+          else txt = "";
+        }catch(e){ txt = ev.data; }
+      }else{
+        txt = new TextDecoder().decode(new Uint8Array(ev.data));
+      }
+      txt = txt
+        .replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, "")
+        .replace(/\x1b\[[0-9;:<>=?]*[A-Za-z]/g, "")
+        .replace(/\x1b[()][A-B0-9]/g, "")
+        .replace(/\x1b[a-zA-Z]/g, "")
+        .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "")
+        .replace(/\r/g, "");
+      if(!txt.trim()) return;
+      state.feedBuf = ((state.feedBuf||"") + txt).slice(-24000);
+      const box = $id("livefeedText");
+      box.textContent = state.feedBuf;
+      box.scrollTop = box.scrollHeight;
+      $id("livefeed").open = true;
+    };
+    ws.onclose = ()=>{ feedState("DETACHED"); if(state.current===id) setTimeout(()=>{ if(state.current===id) startTermFeed(id); }, 4000); };
+    ws.onerror = ()=>feedState("ERROR");
+  }).catch(()=>feedState("NO TERMINAL"));
+}
 
 /* ---------- clocks ---------- */
 function pad(n){return String(n).padStart(2,"0")}
