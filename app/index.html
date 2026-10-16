@@ -51,6 +51,12 @@ body{
   gap:var(--gutter);
   padding:var(--gutter);
 }
+.elbow{grid-area:1/1}
+.header{grid-area:1/2}
+.rail{grid-area:2/1}
+.dataarea{grid-area:2/2}
+.elbow-b{grid-area:3/1}
+.footer{grid-area:3/2}
 
 /* ===== ELBOWS ===== */
 .elbow{position:relative;background:var(--peach);border-top-left-radius:var(--rail-w)}
@@ -208,6 +214,22 @@ td.ws{color:#8a8fa8;font-size:13px}
 .sessstandby{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#4a5378}
 .sessstandby .big{font-weight:700;font-size:44px;letter-spacing:.1em;color:#2e3350}
 .sessstandby .sub2{font-size:15px;font-weight:500;letter-spacing:.12em;color:#3a4166}
+
+/* collapsible rail */
+#railTab{
+  position:fixed;left:5px;top:50%;transform:translateY(-50%);z-index:60;
+  background:var(--periwinkle);border:2px solid #000;color:#000;
+  font-family:var(--font);font-weight:700;font-size:15px;
+  border-radius:12px;padding:16px 5px 12px;cursor:pointer;letter-spacing:.05em;
+  writing-mode:vertical-rl;display:none;
+}
+#railTab:hover{filter:brightness(1.15)}
+.elbow-logo{cursor:pointer}
+body.railhidden .frame{grid-template-columns:0 1fr;padding-left:2px}
+body.railhidden .rail,body.railhidden .elbow,body.railhidden .elbow-b{display:none}
+body.railhidden .header{border-radius:0 30px 0 0}
+body.railhidden .footer{border-radius:0 0 30px 0}
+body.railhidden #railTab{display:block}
 
 /* ===== CONSOLE VIEW ===== */
 .console{flex:1;min-height:0;display:flex;flex-direction:column;padding:10px 14px 8px}
@@ -615,6 +637,7 @@ details.exec.out{border-color:#1c2740}
   </div>
 </div>
 
+<button id="railTab" title="RESTORE NAVIGATION RAIL">&#187;</button>
 <script>
 /* ============================================================
    LCARS OMNIGENT BRIDGE : wired to local Omnigent server
@@ -625,19 +648,20 @@ const HOME = "~";
 
 const state = {
   sessions: [],
+  projects: [],      // [{id,name}] from /v1/projects
   usageById: {},     // id -> {cost, models}
   agents: [],
   host: null,
   hostId: null,
   models: [],        // catalog for current picker harness
   current: null,     // bound session id for console
-  sessFilter: null,
   regMode: false,
   regSel: "scheduled",
   pollTimer: null,
   es: null,
   lastItems: new Map(), // id -> item (current transcript)
   offline: false,
+  foldersInit: false,
 };
 
 /* ---------- helpers ---------- */
@@ -654,6 +678,7 @@ function ago(epoch){
 }
 function money(v){return v==null ? "—" : "$"+Number(v).toFixed(2)}
 function wsOf(sess){
+  if(sess.workspace) return sess.workspace;
   try{
     const c = JSON.parse(sess.labels["omnigent.composer_context.v1.0"] || "{}");
     return (c.working_directory && c.working_directory.path) || "";
@@ -717,60 +742,71 @@ async function boot(){
 }
 
 async function refreshAll(){
-  const [sessions, usage, agents, hosts] = await Promise.all([
+  const [sessions, usage, agents, hosts, projects] = await Promise.all([
     api("/sessions?limit=200"),
     api("/usage"),
     api("/agents"),
     api("/hosts"),
+    api("/projects").catch(()=>({data:[]})),
   ]);
-  state.sessions = (sessions.data || []).sort((a,b)=>(b.updated_at||0)-(a.updated_at||0));
+  state.sessions = (sessions.data || []).filter(s=>!s.archived).sort((a,b)=>(b.updated_at||0)-(a.updated_at||0));
+  state.projects = projects.data || [];
   state.usageById = {};
   (usage.sessions || []).forEach(u => state.usageById[u.id] = u);
   state.agents = agents.data || [];
   state.host = (hosts.hosts || [])[0] || null;
   state.hostId = state.host ? state.host.host_id : null;
   renderSessions();
-  renderFolders();
   renderAgents();
   renderStatus();
   if(state.regMode) renderRegistry(state.regSel);
 }
 
 async function refreshSessions(){
-  const [sessions, usage] = await Promise.all([api("/sessions?limit=200"), api("/usage")]);
-  state.sessions = (sessions.data || []).sort((a,b)=>(b.updated_at||0)-(a.updated_at||0));
+  const [sessions, usage, projects] = await Promise.all([
+    api("/sessions?limit=200"), api("/usage"), api("/projects").catch(()=>({data:[]})),
+  ]);
+  state.sessions = (sessions.data || []).filter(s=>!s.archived).sort((a,b)=>(b.updated_at||0)-(a.updated_at||0));
+  state.projects = projects.data || [];
   state.usageById = {};
   (usage.sessions || []).forEach(u => state.usageById[u.id] = u);
   renderSessions();
-  renderFolders();
   if(state.current) pollTranscript();
 }
 
-/* ---------- sessions view : folder accordion ---------- */
-const OPEN_FOLDERS = new Set(["__ALL__"]);
+/* ---------- sessions view : project folders + unfiled ---------- */
+const OPEN_FOLDERS = new Set();
 function statusDot(status){
   const cls = ["running","idle","failed"].includes(status) ? status : "other";
   return `<span class="sdot dot-${cls}"></span>`;
 }
 function renderSessions(){
   const list = $id("folderList");
+  if(!state.foldersInit){
+    state.projects.forEach(p=>OPEN_FOLDERS.add(p.id));
+    OPEN_FOLDERS.add("__UNFILED__");
+    state.foldersInit = true;
+  }
   list.innerHTML = "";
-  const byWs = new Map();
+  const byProject = new Map();
+  const unfiled = [];
   state.sessions.forEach(s => {
-    const ws = wsOf(s) || "(no workspace)";
-    if(!byWs.has(ws)) byWs.set(ws, []);
-    byWs.get(ws).push(s);
+    const pid = s.project_id;
+    if(pid && state.projects.some(p=>p.id===pid)){
+      if(!byProject.has(pid)) byProject.set(pid, []);
+      byProject.get(pid).push(s);
+    } else {
+      unfiled.push(s);
+    }
   });
-  const groups = [["__ALL__", "ALL SESSIONS", state.sessions]];
-  [...byWs.entries()].sort((a,b)=>b[1].length-a[1].length).forEach(([ws,arr])=>
-    groups.push([ws, shortWs(ws), arr]));
-  groups.forEach(([key,label,arr])=>{
+  const groups = state.projects.map(p => [p.id, (p.name||"project").toUpperCase(), byProject.get(p.id)||[], "var(--lavender)"]);
+  groups.push(["__UNFILED__", "UNFILED", unfiled, "var(--amber)"]);
+  groups.forEach(([key,label,arr,color])=>{
     const open = OPEN_FOLDERS.has(key);
     const head = document.createElement("button");
     head.className = "folderHead";
-    head.style.background = key === "__ALL__" ? "var(--lavender)" : "var(--periwinkle)";
+    head.style.background = color;
     head.innerHTML = `<span class="fharrow">${open?"&#9662;":"&#9656;"}</span>${esc(label)} : ${arr.length}`;
-    head.title = key === "__ALL__" ? "all sessions" : key;
     head.addEventListener("click", ()=>{
       open ? OPEN_FOLDERS.delete(key) : OPEN_FOLDERS.add(key);
       renderSessions(); beep(470);
@@ -794,8 +830,6 @@ function renderSessions(){
     }
   });
 }
-/* alias used by refresh paths */
-function renderFolders(){ renderSessions(); }
 
 /* ---------- console / transcript ---------- */
 function stopLive(){
@@ -823,7 +857,12 @@ async function bindSession(id){
   $id("sessStandby").style.display = "none";
   $id("sessConsole").style.display = "flex";
   $id("conTitle").textContent = (s.title || "(untitled)") + " : " + short(id);
-  $id("conStatus").textContent = (s.status||"").toUpperCase() + " : " + (s.agent_name||"") + " : " + shortWs(wsOf(s));
+  $id("conStatus").textContent =
+    (s.status||"").toUpperCase() +
+    " : AGENT " + (s.agent_name || "unbound") +
+    " : MODEL " + modelOf(s) +
+    (s.reasoning_effort ? " : EFFORT " + s.reasoning_effort : "") +
+    " : " + shortWs(wsOf(s));
   $id("msgs").innerHTML = `<div class="msg"><div class="who system">SYSTEM</div><div class="body">LOADING TRANSCRIPT&#8230;</div></div>`;
   state.lastItems = new Map();
   renderSessions();
@@ -1312,6 +1351,15 @@ $id("mLaunch").addEventListener("click", async ()=>{
     $id("mLaunch").textContent = "LAUNCH";
   }
 });
+
+/* ---------- collapsible rail ---------- */
+function toggleRail(){
+  document.body.classList.toggle("railhidden");
+  $id("railTab").textContent = document.body.classList.contains("railhidden") ? "»" : "«";
+  beep(document.body.classList.contains("railhidden") ? 340 : 620);
+}
+$id("railTab").addEventListener("click", toggleRail);
+document.querySelector(".elbow-logo").addEventListener("click", toggleRail);
 
 /* ---------- clocks ---------- */
 function pad(n){return String(n).padStart(2,"0")}
