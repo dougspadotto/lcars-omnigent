@@ -227,6 +227,14 @@ td.ws{color:#8a8fa8;font-size:13px}
 }
 #railTab:hover{filter:brightness(1.15)}
 .elbow-logo{cursor:pointer}
+/* when the rail is collapsed the logo moves into the header slot, pushing
+   the title text over a bit rather than disappearing */
+#hdrLogoSlot{display:none}
+body.railhidden #hdrLogoSlot{display:block;margin-right:2px;flex:0 0 auto}
+body.railhidden .header .elbow-logo{
+  position:static;display:block;
+  width:56px;height:56px;margin:0;
+}
 body.railhidden .frame{grid-template-columns:0 1fr;padding-left:2px}
 body.railhidden .rail,body.railhidden .elbow,body.railhidden .elbow-b{display:none}
 body.railhidden .header{border-radius:0 30px 0 0}
@@ -474,6 +482,7 @@ details.exec .targ{
   </div>
 
   <div class="header">
+    <span id="hdrLogoSlot" title="RESTORE NAVIGATION RAIL"></span>
     <span class="code">47&#8209;A</span>
     <span class="title" id="hdrTitle">OMNIGENT ACCESS : SESSIONS</span>
     <span class="spacer"></span>
@@ -1430,7 +1439,12 @@ $id("mLaunch").addEventListener("click", async ()=>{
 /* ---------- collapsible rail ---------- */
 function toggleRail(){
   document.body.classList.toggle("railhidden");
-  $id("railTab").textContent = document.body.classList.contains("railhidden") ? "»" : "«";
+  /* the logo survives the collapse : it lives in the header until the rail returns */
+  const logo = document.querySelector(".elbow-logo");
+  const hidden = document.body.classList.contains("railhidden");
+  if(hidden) $id("hdrLogoSlot").appendChild(logo);
+  else document.querySelector(".elbow").appendChild(logo);
+  $id("railTab").textContent = hidden ? "»" : "«";
   sfx.toggle();
 }
 $id("railTab").addEventListener("click", toggleRail);
