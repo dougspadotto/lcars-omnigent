@@ -479,7 +479,7 @@ details.exec .targ{
     <span class="spacer"></span>
     <button class="newbtn" id="newBtn">NEW SESSION</button>
     <span class="sub" id="hdrSub">CONNECTING&#8230;</span>
-    <span class="sd" id="stardate">SD &#8212;&#8212;</span>
+    <span class="sd" id="stardate">STARDATE &#8212;&#8212;</span>
   </div>
 
   <nav class="rail">
@@ -887,11 +887,16 @@ async function bindSession(id){
   sfx.bind();
 }
 
+function statusLine(s, prefix){
+  /* session cost rides only on the running session's own header */
+  const c = s && s.status === "running" ? costOf(s) : null;
+  return (prefix || (s && s.status ? s.status.toUpperCase() : "")) +
+    " : AGENT " + ((s && s.agent_name) || "unbound") +
+    " : " + shortWs(wsOf(s)) +
+    (c != null ? " : " + money(c) : "");
+}
 function setConStatus(s){
-  $id("conStatus").textContent =
-    (s.status||"").toUpperCase() +
-    " : AGENT " + (s.agent_name || "unbound") +
-    " : " + shortWs(wsOf(s));
+  $id("conStatus").textContent = statusLine(s);
 }
 async function pollTranscript(){
   state.lastPollAt = Date.now();
@@ -1034,7 +1039,7 @@ function startLive(){
     es.addEventListener("session.terminal.activity", ()=>{
       lastActivity = Date.now();
       const s = state.sessions.find(x=>x.id===id);
-      $id("conStatus").textContent = "GENERATING" + (s ? " : AGENT " + (s.agent_name||"") + " : " + shortWs(wsOf(s)) : "");
+      $id("conStatus").textContent = statusLine(s, "GENERATING");
       if(actTimer) clearTimeout(actTimer);
       actTimer = setTimeout(()=>{ if(state.current===id){ const s2 = state.sessions.find(x=>x.id===id); if(s2) setConStatus(s2); } }, 5000);
       /* transcript forwarder mirrors in batches : light throttled poll while active */
@@ -1813,7 +1818,7 @@ function tick(){
   const start = new Date(now.getFullYear(),0,1);
   const doy = (now - start)/86400000;
   const sd = 41000 + (doy/365)*1000 + (now.getHours()/24);
-  $id("stardate").textContent = "SD " + sd.toFixed(1);
+  $id("stardate").textContent = "STARDATE " + sd.toFixed(1);
   $id("clock").innerHTML = pad(now.getHours())+":"+pad(now.getMinutes())+":"+pad(now.getSeconds());
 }
 tick(); setInterval(tick,1000);
