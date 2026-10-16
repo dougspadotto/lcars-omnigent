@@ -899,11 +899,14 @@ async function pollTranscript(){
     const d = await api(`/sessions/${state.current}/items?limit=200`);
     const items = d.data || [];
     const prev = state.lastItems;
-    const next = new Map();
+    /* merge, never replace : the SSE stream can deliver a fresh item
+       (e.g. the final message at turn end) before the batch mirror has
+       it, and a poll reading the stale list must not wipe it */
+    const next = new Map(prev);
     items.forEach(i => next.set(i.id, i));
     const added = items.filter(i => !prev.has(i.id)).length;
     state.lastItems = next;
-    renderTranscript(items);
+    renderTranscript([...next.values()].sort((a,b)=>(a.created_at||0)-(b.created_at||0)));
     if(added > 0 && prev.size > 0) sfx.live();
   }catch(e){
     if($id("msgs").children.length <= 1)
