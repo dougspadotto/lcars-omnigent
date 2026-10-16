@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LCARS : OMNIGENT ACCESS</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="alternate icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;500;700&display=swap" rel="stylesheet">
@@ -149,6 +152,25 @@ body{
 }
 .fbtn:hover{filter:brightness(1.2)}
 .fbtn.sel{outline:3px solid #fff;outline-offset:-3px}
+.folderHead{
+  font-family:var(--font);font-weight:700;font-size:13px;color:var(--black);
+  border:none;border-radius:14px;padding:5px 10px 3px;cursor:pointer;text-align:right;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;
+}
+.folderHead:hover{filter:brightness(1.15)}
+.folderHead .fharrow{float:left;font-size:11px;opacity:.7}
+.sessItem{
+  background:#0d1120;color:#cfd6ee;font-family:var(--font);font-weight:500;font-size:13px;
+  text-align:left;padding:5px 10px 3px;border-radius:10px;border:none;cursor:pointer;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;line-height:1.25;
+}
+.sessItem:hover{background:#1a2036}
+.sessItem.sel{outline:2px solid var(--orange);background:#1a2036}
+.sessItem .sdot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:1px}
+.dot-running{background:var(--orange)}
+.dot-idle{background:var(--periwinkle)}
+.dot-failed{background:var(--red)}
+.dot-other{background:#555}
 .sessmain{flex:1;min-width:0;display:flex;flex-direction:column;padding:12px 14px 10px 14px}
 .sesshead{display:flex;align-items:baseline;gap:14px;margin-bottom:8px}
 .sesshead h2{font-size:22px;font-weight:700;color:var(--peach);letter-spacing:.03em}
@@ -183,6 +205,9 @@ td.ws{color:#8a8fa8;font-size:13px}
 .rrow .ok{color:#88BB88;font-weight:700}
 .rrow .bad{color:var(--red);font-weight:700}
 .regwrap .empty{color:#556;padding:18px 14px;font-family:var(--mono);font-size:13px}
+.sessstandby{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#4a5378}
+.sessstandby .big{font-weight:700;font-size:44px;letter-spacing:.1em;color:#2e3350}
+.sessstandby .sub2{font-size:15px;font-weight:500;letter-spacing:.12em;color:#3a4166}
 
 /* ===== CONSOLE VIEW ===== */
 .console{flex:1;min-height:0;display:flex;flex-direction:column;padding:10px 14px 8px}
@@ -218,6 +243,48 @@ td.ws{color:#8a8fa8;font-size:13px}
 .toolbody .targ{color:#9fb4d8;font-size:12px;max-height:120px;overflow:hidden}
 .cursor{display:inline-block;width:9px;height:15px;background:var(--orange);vertical-align:-2px;animation:blink 1s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
+
+/* markdown output */
+.msg .body.md{
+  font-family:-apple-system,"SF Pro Text","Helvetica Neue",sans-serif;
+  font-size:13.5px;line-height:1.5;white-space:normal;
+}
+.md h1,.md h2,.md h3,.md h4{font-family:var(--font);color:var(--amber);letter-spacing:.04em;margin:10px 0 4px;text-transform:uppercase}
+.md h1{font-size:18px}.md h2{font-size:16px}.md h3{font-size:14.5px}.md h4{font-size:13.5px}
+.md p{margin:6px 0}
+.md ul,.md ol{margin:6px 0 6px 18px}
+.md li{margin:2px 0}
+.md code{background:#141a2b;border:1px solid #24304e;border-radius:5px;padding:0 5px;font-family:var(--mono);font-size:12px;color:#a8c6ff}
+.md .mdcode{
+  background:#0a0e18;border:1px solid #24304e;border-radius:8px;padding:8px 10px;margin:6px 0;
+  font-family:var(--mono);font-size:12px;color:#c9d6f2;white-space:pre-wrap;overflow-wrap:anywhere;
+  user-select:text;
+}
+.md a{color:var(--blue)}
+.md table{border-collapse:collapse;margin:6px 0}
+.md td,.md th{border:1px solid #24304e;padding:3px 8px;font-size:12px}
+.md blockquote{border-left:3px solid #33406b;margin:6px 0;padding:2px 12px;color:#9aa5c8}
+
+/* folded exec blocks */
+details.exec{
+  border:1px solid #2a3a55;border-radius:10px;background:#0a0e18;margin-bottom:6px;
+  font-family:var(--mono);font-size:12px;
+}
+details.exec summary{
+  cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;
+  padding:5px 10px;color:#7f95c4;font-family:var(--font);font-weight:700;font-size:12px;
+  letter-spacing:.08em;user-select:none;
+}
+details.exec summary::-webkit-details-marker{display:none}
+details.exec summary::before{content:"\25B8";color:var(--blue);font-size:11px}
+details.exec[open] summary::before{content:"\25BE"}
+details.exec summary .etag{color:#556b96;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;text-align:left}
+details.exec .targ{
+  padding:6px 10px 8px;color:#9fb4d8;max-height:260px;overflow-y:auto;
+  white-space:pre-wrap;overflow-wrap:anywhere;border-top:1px solid #1a2338;user-select:text;
+}
+details.exec.out summary{color:#556b96}
+details.exec.out{border-color:#1c2740}
 .inputrow{display:flex;gap:8px;align-items:stretch;padding-top:8px;border-top:2px solid #333}
 .inputframe{
   flex:1;border:2px solid var(--iceblue);border-radius:18px;
@@ -431,11 +498,11 @@ td.ws{color:#8a8fa8;font-size:13px}
     <section class="view active" id="view-sessions">
       <div class="sesswrap">
         <div class="sessfilters" id="sessFilters">
-          <div id="colFolders">
+          <div id="colFolders" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow-y:auto;gap:4px">
             <div class="flabel">OMNIGENT FOLDERS</div>
             <div id="folderList" style="display:flex;flex-direction:column;gap:4px"></div>
           </div>
-          <div id="colRegistries" style="margin-top:auto">
+          <div id="regNav" style="display:none;flex-direction:column;gap:4px">
             <div class="flabel">REGISTRIES</div>
             <button class="fbtn" data-reg="scheduled" style="background:var(--coral)">SCHEDULED</button>
             <button class="fbtn" data-reg="policies" style="background:var(--periwinkle)">POLICIES</button>
@@ -443,20 +510,29 @@ td.ws{color:#8a8fa8;font-size:13px}
           </div>
         </div>
         <div class="sessmain">
-          <div class="sesshead" id="sessHead">
-            <h2>SESSION REGISTRY</h2>
-            <span class="cnt" id="sessCnt">LOADING&#8230;</span>
+          <div class="sessstandby" id="sessStandby">
+            <svg width="120" height="120" viewBox="0 0 120 120" style="opacity:.5">
+              <use href="#star5" transform="translate(60 64) rotate(-8)" fill="#E84D8A" stroke="#E84D8A" stroke-width="10" stroke-linejoin="round"/>
+            </svg>
+            <div class="big">STANDBY</div>
+            <div class="sub2">SELECT A SESSION FROM THE FOLDERS</div>
           </div>
-          <div id="sessTableWrap" style="display:flex;flex-direction:column;flex:1;min-height:0">
-            <table class="sessions">
-              <thead><tr>
-                <th>SESSION</th><th>TITLE</th><th>AGENT</th><th>WORKSPACE</th><th>STATUS</th>
-                <th>MODEL</th><th style="text-align:right">COST</th><th>LAST ACTIVITY</th>
-              </tr></thead>
-              <tbody id="sessBody"></tbody>
-            </table>
-            <div class="pagerow">
-              <span class="info" id="pageInfo"></span>
+          <div class="console" id="sessConsole" style="display:none">
+            <div class="consolehead">
+              <span class="ct" id="conTitle">NO SESSION BOUND</span>
+              <span class="cs" id="conStatus"></span>
+              <span class="sp"></span>
+              <button class="purgebtn" id="purgeBtn">PURGE</button>
+            </div>
+            <div class="msgs" id="msgs">
+              <div class="msg"><div class="who system">SYSTEM</div><div class="body">Select a session in the folders to bind the console.</div></div>
+            </div>
+            <div class="inputrow">
+              <div class="inputframe">
+                <span class="prompt">&gt;</span>
+                <input id="cmdline" type="text" placeholder="ENTER DIRECTIVE : POSTS TO BOUND SESSION" autocomplete="off">
+              </div>
+              <button class="sendbtn" id="sendBtn">TRANSMIT</button>
             </div>
           </div>
           <div class="regwrap" id="regPanel"></div>
@@ -464,27 +540,7 @@ td.ws{color:#8a8fa8;font-size:13px}
       </div>
     </section>
 
-    <!-- CONSOLE -->
-    <section class="view" id="view-console">
-      <div class="console">
-        <div class="consolehead">
-          <span class="ct" id="conTitle">NO SESSION BOUND</span>
-          <span class="cs" id="conStatus"></span>
-          <span class="sp"></span>
-          <button class="purgebtn" id="purgeBtn">PURGE</button>
-        </div>
-        <div class="msgs" id="msgs">
-          <div class="msg"><div class="who system">SYSTEM</div><div class="body">Select a session in the registry to bind the console.</div></div>
-        </div>
-        <div class="inputrow">
-          <div class="inputframe">
-            <span class="prompt">&gt;</span>
-            <input id="cmdline" type="text" placeholder="ENTER DIRECTIVE : POSTS TO BOUND SESSION" autocomplete="off">
-          </div>
-          <button class="sendbtn" id="sendBtn">TRANSMIT</button>
-        </div>
-      </div>
-    </section>
+    <!-- CONSOLE is embedded in the sessions view main area (third column) -->
 
     <!-- AGENTS -->
     <section class="view" id="view-agents">
@@ -690,52 +746,56 @@ async function refreshSessions(){
   if(state.current) pollTranscript();
 }
 
-/* ---------- sessions view ---------- */
-function renderSessions(){
-  const rows = state.sessions.filter(s => !state.sessFilter || wsOf(s) === state.sessFilter);
-  const tb = $id("sessBody");
-  tb.innerHTML = "";
-  rows.slice(0, 60).forEach(s => {
-    const tr = document.createElement("tr");
-    if(state.current === s.id) tr.classList.add("sel");
-    tr.innerHTML =
-      `<td class="id">${esc(short(s.id))}</td>`+
-      `<td>${esc(s.title || "(untitled)")}</td>`+
-      `<td class="agent">${esc(s.agent_name||"—")}</td>`+
-      `<td class="ws">${esc(shortWs(wsOf(s)))}</td>`+
-      `<td>${pill(s.status)}</td>`+
-      `<td>${esc(modelOf(s))}</td>`+
-      `<td class="cost">${esc(money(costOf(s)))}</td>`+
-      `<td>${esc(ago(s.updated_at))}</td>`;
-    tr.addEventListener("click", () => bindSession(s.id));
-    tb.appendChild(tr);
-  });
-  $id("sessCnt").textContent =
-    `${state.sessions.length} CONVERSATIONS LIVE` + (state.sessFilter ? ` : FILTER ${shortWs(state.sessFilter)}` : "");
-  $id("pageInfo").textContent = `SHOWING ${Math.min(rows.length,60)} OF ${rows.length} : LIVE VIA /V1/SESSIONS`;
+/* ---------- sessions view : folder accordion ---------- */
+const OPEN_FOLDERS = new Set(["__ALL__"]);
+function statusDot(status){
+  const cls = ["running","idle","failed"].includes(status) ? status : "other";
+  return `<span class="sdot dot-${cls}"></span>`;
 }
-
-function renderFolders(){
-  const counts = {};
-  state.sessions.forEach(s => {
-    const ws = wsOf(s);
-    if(ws) counts[ws] = (counts[ws]||0)+1;
-  });
+function renderSessions(){
   const list = $id("folderList");
   list.innerHTML = "";
-  Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,14).forEach(([ws,n])=>{
-    const b = document.createElement("button");
-    b.className = "fbtn" + (state.sessFilter===ws ? " sel" : "");
-    b.style.background = "var(--periwinkle)";
-    b.textContent = `${shortWs(ws)} : ${n}`;
-    b.title = ws;
-    b.addEventListener("click", ()=>{
-      state.sessFilter = state.sessFilter===ws ? null : ws;
-      renderFolders(); renderSessions(); beep(480);
+  const byWs = new Map();
+  state.sessions.forEach(s => {
+    const ws = wsOf(s) || "(no workspace)";
+    if(!byWs.has(ws)) byWs.set(ws, []);
+    byWs.get(ws).push(s);
+  });
+  const groups = [["__ALL__", "ALL SESSIONS", state.sessions]];
+  [...byWs.entries()].sort((a,b)=>b[1].length-a[1].length).forEach(([ws,arr])=>
+    groups.push([ws, shortWs(ws), arr]));
+  groups.forEach(([key,label,arr])=>{
+    const open = OPEN_FOLDERS.has(key);
+    const head = document.createElement("button");
+    head.className = "folderHead";
+    head.style.background = key === "__ALL__" ? "var(--lavender)" : "var(--periwinkle)";
+    head.innerHTML = `<span class="fharrow">${open?"&#9662;":"&#9656;"}</span>${esc(label)} : ${arr.length}`;
+    head.title = key === "__ALL__" ? "all sessions" : key;
+    head.addEventListener("click", ()=>{
+      open ? OPEN_FOLDERS.delete(key) : OPEN_FOLDERS.add(key);
+      renderSessions(); beep(470);
     });
-    list.appendChild(b);
+    list.appendChild(head);
+    if(open){
+      arr.slice(0,40).forEach(s=>{
+        const b = document.createElement("button");
+        b.className = "sessItem" + (state.current===s.id ? " sel" : "");
+        b.innerHTML = statusDot(s.status) + esc(s.title || "("+short(s.id)+")");
+        b.title = `${s.title||""} : ${s.agent_name||""} : ${shortWs(wsOf(s))}`;
+        b.addEventListener("click", ()=>bindSession(s.id));
+        list.appendChild(b);
+      });
+      if(arr.length > 40){
+        const more = document.createElement("div");
+        more.style.cssText = "color:#556;font-size:12px;padding:2px 10px;font-family:var(--font);letter-spacing:.08em";
+        more.textContent = `+ ${arr.length-40} MORE`;
+        list.appendChild(more);
+      }
+    }
   });
 }
+/* alias used by refresh paths */
+function renderFolders(){ renderSessions(); }
 
 /* ---------- console / transcript ---------- */
 function stopLive(){
@@ -748,11 +808,25 @@ async function bindSession(id){
   if(!s) return;
   state.current = id;
   stopLive();
-  switchView("console");
+  /* bind into the sessions view main area (third column) */
+  document.querySelectorAll(".rail .btn").forEach(x=>x.classList.remove("active"));
+  document.querySelector('.btn[data-view="sessions"]').classList.add("active");
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  $id("view-sessions").classList.add("active");
+  if(state.regMode){
+    state.regMode = false;
+    $id("regPanel").classList.remove("on");
+    $id("colFolders").style.display = "flex";
+    $id("regNav").style.display = "none";
+  }
+  $id("hdrTitle").textContent = "OMNIGENT ACCESS : " + (s.title || "CONSOLE").toUpperCase().slice(0,40);
+  $id("sessStandby").style.display = "none";
+  $id("sessConsole").style.display = "flex";
   $id("conTitle").textContent = (s.title || "(untitled)") + " : " + short(id);
   $id("conStatus").textContent = (s.status||"").toUpperCase() + " : " + (s.agent_name||"") + " : " + shortWs(wsOf(s));
   $id("msgs").innerHTML = `<div class="msg"><div class="who system">SYSTEM</div><div class="body">LOADING TRANSCRIPT&#8230;</div></div>`;
   state.lastItems = new Map();
+  renderSessions();
   await pollTranscript();
   startLive();
   beep(620);
@@ -776,6 +850,42 @@ async function pollTranscript(){
   }
 }
 
+/* minimal markdown renderer : input must already be HTML-escaped */
+function mdToHtml(src){
+  const lines = src.split(/\r?\n/);
+  let html = "", inCode = false, listTag = null;
+  const inline = t => t
+    .replace(/`([^`]+)`/g,"<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>")
+    .replace(/(^|[\s(])\*([^*\n]+)\*/g,"$1<i>$2</i>")
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  const closeList = ()=>{ if(listTag){ html += "</"+listTag+">"; listTag = null; } };
+  for(const raw of lines){
+    const t = raw.trim();
+    if(/^```/.test(t)){
+      closeList();
+      if(inCode){ html += "</div>"; inCode = false; }
+      else{ html += '<div class="mdcode">'; inCode = true; }
+      continue;
+    }
+    if(inCode){ html += raw + "\n"; continue; }
+    const h = t.match(/^(#{1,4})\s+(.*)/);
+    if(h){ closeList(); html += `<h${h[1].length}>` + inline(h[2]) + `</h${h[1].length}>`; continue; }
+    const ul = t.match(/^[-*+]\s+(.*)/);
+    if(ul){ if(listTag!=="ul"){ closeList(); html += "<ul>"; listTag="ul"; } html += "<li>"+inline(ul[1])+"</li>"; continue; }
+    const ol = t.match(/^\d+[.)]\s+(.*)/);
+    if(ol){ if(listTag!=="ol"){ closeList(); html += "<ol>"; listTag="ol"; } html += "<li>"+inline(ol[1])+"</li>"; continue; }
+    if(/^(---|\*\*\*)$/.test(t)){ closeList(); html += "<hr>"; continue; }
+    if(t.startsWith("&gt;")){ closeList(); html += "<blockquote>"+inline(t.slice(4))+"</blockquote>"; continue; }
+    if(!t){ closeList(); continue; }
+    closeList();
+    html += "<p>"+inline(t)+"</p>";
+  }
+  closeList();
+  if(inCode) html += "</div>";
+  return html;
+}
+
 function renderTranscript(items){
   const box = $id("msgs");
   box.innerHTML = "";
@@ -788,15 +898,15 @@ function renderTranscript(items){
       const text = parts.join("\n").trim();
       if(!text) return;
       const div = document.createElement("div");
+      div.className = "msg";
       if(role === "user"){
-        div.className = "msg";
         div.innerHTML = `<div class="who user">USER</div><div class="body"></div>`;
+        div.querySelector(".body").textContent = text;
       }else{
-        div.className = "msg";
-        div.innerHTML = `<div class="who assistant">OMNIGENT</div><div class="body"></div>`;
+        div.innerHTML = `<div class="who assistant">OMNIGENT</div><div class="body md"></div>`;
+        div.querySelector(".body").innerHTML = mdToHtml(esc(text));
         last = div;
       }
-      div.querySelector(".body").textContent = text;
       box.appendChild(div);
     }
     else if(t === "reasoning"){
@@ -809,12 +919,14 @@ function renderTranscript(items){
       box.appendChild(div);
     }
     else if(t === "function_call"){
-      const div = document.createElement("div");
-      div.className = "msg";
       let args = i.arguments || "";
       try{ args = JSON.stringify(JSON.parse(args), null, 1); }catch(e){}
-      div.innerHTML = `<div class="who tool">EXEC</div><div class="body"><div class="toolbody"><div class="toolhead">${esc(i.name||"tool")}</div><div class="targ"></div></div></div>`;
-      div.querySelector(".targ").textContent = String(args).slice(0, 900);
+      const argStr = String(args);
+      const div = document.createElement("div");
+      div.className = "msg";
+      div.innerHTML = `<div class="who tool">EXEC</div><div class="body">`+
+        `<details class="exec"><summary><span class="ename">${esc(i.name||"tool")}</span><span class="etag">${esc(argStr.replace(/\s+/g," ").slice(0,90))}</span></summary><div class="targ"></div></details></div>`;
+      div.querySelector(".targ").textContent = argStr.slice(0, 4000);
       box.appendChild(div);
     }
     else if(t === "function_call_output"){
@@ -822,8 +934,9 @@ function renderTranscript(items){
       if(!out.trim()) return;
       const div = document.createElement("div");
       div.className = "msg";
-      div.innerHTML = `<div class="who toolout">EXEC&#160;OUT</div><div class="body"><div class="toolbody"><div class="targ"></div></div></div>`;
-      div.querySelector(".targ").textContent = out.slice(0, 700);
+      div.innerHTML = `<div class="who toolout">EXEC&#160;OUT</div><div class="body">`+
+        `<details class="exec out"><summary><span class="etag">${esc(out.replace(/\s+/g," ").slice(0,100))}</span></summary><div class="targ"></div></details></div>`;
+      div.querySelector(".targ").textContent = out.slice(0, 6000);
       box.appendChild(div);
     }
     else if(t && t.includes("error")){
@@ -949,8 +1062,13 @@ async function loadUsage(panel){
   panel.insertAdjacentHTML("beforeend", html);
 }
 
-/* registries rail toggle */
+/* registries rail item : swaps second column to registries and main to registry panel */
 const regBtn = $id("regBtn");
+function showSessionPanels(){
+  $id("sessStandby").style.display = state.current ? "none" : "flex";
+  $id("sessConsole").style.display = state.current ? "flex" : "none";
+  $id("regPanel").classList.remove("on");
+}
 regBtn.addEventListener("click", ()=>{
   if(state.regMode){
     document.querySelector('.btn[data-view="sessions"]').click();
@@ -962,19 +1080,19 @@ regBtn.addEventListener("click", ()=>{
   document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
   $id("view-sessions").classList.add("active");
   $id("colFolders").style.display = "none";
-  $id("sessTableWrap").style.display = "none";
-  $id("sessHead").style.display = "none";
+  $id("regNav").style.display = "flex";
+  $id("sessStandby").style.display = "none";
+  $id("sessConsole").style.display = "none";
   renderRegistry(state.regSel);
   $id("hdrTitle").textContent = "OMNIGENT ACCESS : REGISTRIES";
   beep(560);
 });
 
-document.querySelectorAll("#colRegistries .fbtn").forEach(b=>{
+document.querySelectorAll("#regNav .fbtn").forEach(b=>{
   b.addEventListener("click", ()=>{
     state.regSel = b.dataset.reg;
-    document.querySelectorAll("#colRegistries .fbtn").forEach(x=>x.classList.toggle("sel", x===b));
-    if(!state.regMode) regBtn.click();
-    else renderRegistry(state.regSel);
+    document.querySelectorAll("#regNav .fbtn").forEach(x=>x.classList.toggle("sel", x===b));
+    renderRegistry(state.regSel);
     beep(500);
   });
 });
@@ -985,21 +1103,29 @@ function switchView(v){
   document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));
   $id("view-"+v).classList.add("active");
 }
+function exitRegModePanels(){
+  if(!state.regMode) return;
+  state.regMode = false;
+  $id("colFolders").style.display = "flex";
+  $id("regNav").style.display = "none";
+  showSessionPanels();
+  renderSessions();
+}
 document.querySelectorAll(".rail .btn[data-view]").forEach(b=>{
   b.addEventListener("click",()=>{
     document.querySelectorAll(".rail .btn").forEach(x=>x.classList.remove("active"));
     b.classList.add("active");
-    switchView(b.dataset.view);
-    if(state.regMode){
-      state.regMode = false;
-      $id("regPanel").classList.remove("on");
-      $id("sessTableWrap").style.display = "flex";
-      $id("sessHead").style.display = "flex";
-      $id("colFolders").style.display = "block";
-    }
-    $id("hdrTitle").textContent = titles[b.dataset.view];
-    if(b.dataset.view === "console" && !state.current){
-      $id("msgs").innerHTML = `<div class="msg"><div class="who system">SYSTEM</div><div class="body">Select a session in the registry to bind the console.</div></div>`;
+    const v = b.dataset.view;
+    /* the console is embedded in the sessions view main area */
+    switchView(v === "console" ? "sessions" : v);
+    exitRegModePanels();
+    $id("hdrTitle").textContent = titles[v];
+    if(v === "console"){
+      if(!state.current){
+        $id("msgs").innerHTML = `<div class="msg"><div class="who system">SYSTEM</div><div class="body">Select a session in the folders to bind the console.</div></div>`;
+      } else {
+        $id("cmdline").focus();
+      }
     }
     beep(520);
   });
