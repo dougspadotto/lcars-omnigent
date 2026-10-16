@@ -879,6 +879,7 @@ async function bindSession(id){
   setConStatus(s);
   $id("msgs").innerHTML = `<div class="msg"><div class="who system">SYSTEM</div><div class="body">LOADING TRANSCRIPT&#8230;</div></div>`;
   state.lastItems = new Map();
+  state.pendingUser = null;
   renderSessions();
   await pollTranscript();
   startLive();
@@ -972,6 +973,12 @@ function renderTranscript(items){
       }else{
         div.innerHTML = `<div class="who assistant">OMNIGENT</div><div class="body md"></div>`;
         div.querySelector(".body").innerHTML = mdToHtml(esc(text));
+        div.style.cursor = "pointer";
+        div.title = "CLICK : OPEN THIS TURN'S LIVE OUTPUT";
+        div.addEventListener("click", ()=>{
+          if(String(window.getSelection()).length) return;  /* text selection, not a click */
+          openTurnStream(i);
+        });
         last = div;
       }
       box.appendChild(div);
@@ -986,6 +993,19 @@ function renderTranscript(items){
   });
   if(last){
     last.querySelector(".body").insertAdjacentHTML("beforeend", `<span class="cursor"></span>`);
+  }
+  /* optimistic user echo : show the sent text until the mirror item lands */
+  if(state.pendingUser){
+    const has = items.some(i => i.type === "message" && i.role === "user" &&
+      (i.content||[]).some(c => (c.text||"").trim() === state.pendingUser));
+    if(has){ state.pendingUser = null; }
+    else{
+      const div = document.createElement("div");
+      div.className = "msg";
+      div.innerHTML = `<div class="who user">USER</div><div class="body"></div>`;
+      div.querySelector(".body").textContent = state.pendingUser;
+      box.appendChild(div);
+    }
   }
   if(askStable && askCardEl) box.appendChild(askCardEl);
   box.scrollTop = box.scrollHeight;
@@ -1027,7 +1047,12 @@ function startLive(){
         if(s && d.status){ s.status = d.status; setConStatus(s); }
         if(state.current !== id) return;
         if(d.status === "running"){ startTermFeed(id); }
-        else { stopTermFeed(); feedCollapse(); feedState((d.status||"idle").toUpperCase()); }
+        else {
+          stopTermFeed();
+          /* an open turn view survives the turn ending : it is history */
+          if(!turnView){ feedCollapse(); feedState((d.status||"idle").toUpperCase()); }
+          else feedState("TURN VIEW");
+        }
       }catch(e){}
     });
     es.onerror = ()=>{
@@ -1059,6 +1084,9 @@ async function send(){
       body: JSON.stringify({type:"message", data:{role:"user", content:[{type:"input_text", text}]}}),
     });
     sfx.transmit();
+    /* echo immediately : the mirror can lag the batched items behind the send */
+    state.pendingUser = text;
+    renderTranscript([...state.lastItems.values()].sort((a,b)=>(a.created_at||0)-(b.created_at||0)));
     setTimeout(pollTranscript, 800);
   }catch(e){
     sysLine("TRANSMISSION FAILED : " + e.message);
@@ -1436,6 +1464,7 @@ async function fetchGeometry(meta){
 }
 async function startTermFeed(id, force){
   stopTermFeed();
+  if(turnView) clearTurnView();
   const s = state.sessions.find(x=>x.id===id);
   if(!s) return;
   if(isSubagentSession(s)){ feedCollapse(); feedState("MAIN SESSION ONLY"); return; }
@@ -1506,20 +1535,87 @@ async function startTermFeed(id, force){
         feedWrite(new Uint8Array(ev.data));
       }
     };
-    ws.onclose = ()=>{ feedState("DETACHED"); if(state.current===id) setTimeout(()=>{ if(state.current===id) startTermFeed(id); }, 4000); };
+    ws.onclose = ()=>{ feedState("DETACHED"); if(state.current===id) setTimeout(()=>{ if(state.current===id && !turnView) startTermFeed(id); }, 4000); };
     ws.onerror = ()=>feedState("ERROR");
   }).catch(()=>feedState("NO TERMINAL"));
 }
 $id("livefeed").addEventListener("toggle", ()=>{
   if($id("livefeed").open){
+    if(turnView) return;
     if(!state.termWs && state.current) startTermFeed(state.current, true);
+  } else if(turnView){
+    /* closing the panel ends the history view : back to the live pane */
+    clearTurnView();
+    const s = state.sessions.find(x=>x.id===state.current);
+    if(s && s.status === "running") startTermFeed(state.current);
+    else feedState("IDLE");
   } else if(state.termWs){
     stopTermFeed(); feedState("DETACHED");
   }
 });
 
-/* ---------- input-request relay : prompt on the pane -> card in the main screen ---------- */
-/* When the harness stops for information in the terminal (question menu,
+/* ---------- turn view : click an Omnigent message to reopen its working stream ---------- */
+/* Items arrive grouped per turn but all share one mirrored response_id,
+   so a turn is delimited positionally: the reasoning and exec items
+   between the previous message and this one. */
+let turnView = null;
+function turnStreamFor(msg){
+  const arr = [...state.lastItems.values()].sort((a,b)=>(a.created_at||0)-(b.created_at||0));
+  const idx = arr.findIndex(i => i.id === msg.id);
+  if(idx < 0) return [];
+  const out = [];
+  for(let k = idx - 1; k >= 0; k--){
+    const t = arr[k].type;
+    if(t === "message") break;
+    if(t === "reasoning" || t === "function_call" || t === "function_call_output") out.unshift(arr[k]);
+  }
+  return out;
+}
+function clearTurnView(){
+  turnView = null;
+  $id("livefeedText").innerHTML = "";
+}
+function openTurnStream(msg){
+  const stream = turnStreamFor(msg);
+  if(!stream.length){ sysLine("NO WORKING STREAM RECORDED BEFORE THIS MESSAGE."); return; }
+  stopTermFeed();
+  turnView = msg.id;
+  feedState("TURN VIEW");
+  const box = $id("livefeed");
+  box.open = true;
+  const host = $id("livefeedText");
+  host.innerHTML = "";
+  stream.forEach(i=>{
+    const div = document.createElement("div");
+    div.className = "msg";
+    div.style.margin = "4px 8px";
+    if(i.type === "reasoning"){
+      const txt = (i.content||[]).map(c=>c.text||c.summary||"").filter(Boolean).join(" ").trim();
+      if(!txt) return;
+      div.innerHTML = `<div class="who" style="color:#556080">REASON</div><div class="body"></div>`;
+      div.querySelector(".body").textContent = txt.slice(0, 2000);
+    } else if(i.type === "function_call"){
+      let args = i.arguments || "";
+      try{ args = JSON.stringify(JSON.parse(args), null, 1); }catch(e){}
+      const argStr = String(args);
+      div.innerHTML = `<div class="who" style="color:var(--blue)">EXEC</div><div class="body">`+
+        `<details class="exec"><summary><span class="ename" style="color:var(--tangerine)">${esc(i.name||"tool")}</span><span class="etag">${esc(argStr.replace(/\s+/g," ").slice(0,90))}</span></summary><div class="targ"></div></details></div>`;
+      div.querySelector(".targ").textContent = argStr.slice(0, 4000);
+    } else if(i.type === "function_call_output"){
+      const outTxt = typeof i.output === "string" ? i.output : JSON.stringify(i.output ?? "");
+      if(!outTxt.trim()) return;
+      div.innerHTML = `<div class="who" style="color:#5a7ba6">EXEC&#160;OUT</div><div class="body">`+
+        `<details class="exec"><summary><span class="etag">${esc(outTxt.replace(/\s+/g," ").slice(0,100))}</span></summary><div class="targ"></div></details></div>`;
+      div.querySelector(".targ").textContent = outTxt.slice(0, 6000);
+    } else {
+      return;
+    }
+    host.appendChild(div);
+  });
+  host.scrollTop = host.scrollHeight;
+}
+
+/* ---------- input-request relay : prompt on the pane -> card in the main screen ---------- *//* When the harness stops for information in the terminal (question menu,
    permission or plan prompt), the card lets the user answer from the main
    screen; the answer is injected into the pane as keystrokes via the
    bridge's tmux send-keys channel. Options press their digit then Enter:
