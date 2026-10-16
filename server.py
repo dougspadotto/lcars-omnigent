@@ -38,6 +38,23 @@ with open(SIG_PATH) as f:
 TMUX_SOCKET_RE = re.compile(r"/omnigent-terminal-[A-Za-z0-9_]+/tmux\.sock$")
 
 
+def build_stamp():
+    """Max mtime across the UI assets and this script : lets the native
+    shell app detect UI or bridge updates and reload/restart itself."""
+    root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app")
+    files = [os.path.join(root, "index.html"), os.path.abspath(__file__)]
+    vdir = os.path.join(root, "vendor")
+    if os.path.isdir(vdir):
+        files += [os.path.join(vdir, f) for f in os.listdir(vdir)]
+    newest = 0
+    for f in files:
+        try:
+            newest = max(newest, os.path.getmtime(f))
+        except OSError:
+            pass
+    return {"page": int(newest), "self": int(os.path.getmtime(os.path.abspath(__file__)))}
+
+
 def tmux_geometry(socket_path, target):
     if not TMUX_SOCKET_RE.search(socket_path) or not os.path.exists(socket_path):
         return None
@@ -212,7 +229,14 @@ class BridgeHandler(SimpleHTTPRequestHandler):
         up.close()
 
     def do_GET(self):
-        if self.path.startswith("/api/tmux-geometry?"):
+        if self.path == "/api/build-stamp":
+            body = json.dumps(build_stamp()).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path.startswith("/api/tmux-geometry?"):
             from urllib.parse import urlparse, parse_qs
             q = parse_qs(urlparse(self.path).query)
             geo = tmux_geometry(
