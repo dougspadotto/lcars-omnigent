@@ -12,7 +12,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="vendor/xterm.min.css">
 <script src="vendor/xterm.min.js"></script>
-<script src="vendor/addon-fit.min.js"></script>
 <style>
 :root{
   --black:#000;
@@ -551,7 +550,7 @@ details.exec.out{border-color:#1c2740}
             </div>
             <details id="livefeed" class="exec" style="margin:8px 0 0">
               <summary><span class="ename" style="color:var(--tangerine)">LIVE OUTPUT</span><span class="etag" id="livefeedState">DETACHED</span></summary>
-              <div id="livefeedText" style="height:280px;padding:4px;background:#000;border-radius:0 0 8px 8px;overflow:hidden"></div>
+              <div id="livefeedText" style="height:320px;padding:4px;background:#000;border-radius:0 0 8px 8px;overflow:auto"></div>
             </details>
             <div class="msgs" id="msgs">
               <div class="msg"><div class="who system">SYSTEM</div><div class="body">Select a session in the folders to bind the console.</div></div>
@@ -1432,7 +1431,7 @@ document.querySelector(".elbow-logo").addEventListener("click", toggleRail);
 /* Live output is a main-session-only feature : sub-agent sessions never
    attach, and the pane follows the turn (attach while running, detach and
    collapse when it ends) so it never lingers over the transcript. */
-let feedTerm = null, feedFit = null;
+let feedTerm = null, feedGeom = null;
 function isSubagentSession(s){
   return /-subagent$/.test((s && s.labels && s.labels["omnigent.wrapper"]) || "");
 }
@@ -1443,21 +1442,29 @@ function stopTermFeed(){
     try{ state.termWs.onclose = null; state.termWs.close(); }catch(e){}
     state.termWs = null;
   }
-  if(feedTerm){ try{ feedTerm.dispose(); }catch(e){} feedTerm = null; feedFit = null; }
+  if(feedTerm){ try{ feedTerm.dispose(); }catch(e){} feedTerm = null; }
   state.feedBuf = "";
 }
 function feedWrite(data){
   if(!feedTerm) return;
   feedTerm.write(data);
   const box = $id("livefeed");
-  if(!box.open){ box.open = true; setTimeout(fitFeed, 50); }
-}
-function fitFeed(){
-  if(feedFit && $id("livefeed").open){
-    try{ feedFit.fit(); }catch(e){}
+  if(!box.open) box.open = true;
+  /* the grid is the pane's full height, taller than the panel : follow the
+     live tail unless the user scrolled up to inspect older rows */
+  const host = $id("livefeedText");
+  if(host.scrollHeight - host.scrollTop - host.clientHeight < 48){
+    host.scrollTop = host.scrollHeight;
   }
 }
-function startTermFeed(id, force){
+async function fetchGeometry(meta){
+  try{
+    const r = await fetch(`/api/tmux-geometry?socket=${encodeURIComponent(meta.tmux_socket||"")}&target=${encodeURIComponent(meta.tmux_target||"")}`);
+    if(!r.ok) return null;
+    return await r.json();
+  }catch(e){ return null; }
+}
+async function startTermFeed(id, force){
   stopTermFeed();
   const s = state.sessions.find(x=>x.id===id);
   if(!s) return;
@@ -1465,26 +1472,30 @@ function startTermFeed(id, force){
   if(!force && s.status !== "running"){ feedCollapse(); feedState("IDLE"); return; }
   feedState("CONNECTING…");
   const host = $id("livefeedText");
-  if(window.Terminal){
-    try{
-      feedTerm = new window.Terminal({
-        fontSize: 11, fontFamily: '"SF Mono", Menlo, monospace',
-        theme: { background: "#000000", foreground: "#c8d4f0" },
-        convertEol: false, cursorBlink: false, disableStdin: true, scrollback: 2000,
-      });
-      feedFit = new window.FitAddon.FitAddon();
-      feedTerm.loadAddon(feedFit);
-      feedTerm.open(host);
-      setTimeout(fitFeed, 30);
-    }catch(e){ feedTerm = null; }
-  }
-  api(`/sessions/${id}/resources/terminals`).then(d=>{
+  api(`/sessions/${id}/resources/terminals`).then(async d=>{
     if(state.current !== id) return;
     const terms = d.data || d.terminals || [];
     const t = terms.find(x => (x.metadata||{}).session_key === "main" || /:main$/.test(x.name||""));
     if(!t){ feedState("NO MAIN TERMINAL"); return; }
     const meta = t.metadata || {};
     const tid = t.resource_id || t.id || (t.resource && t.resource.id);
+    /* the viewer cannot reflow the pane (read-only attach is ignore-size),
+       so xterm must render at the pane's own grid or tmux cursor addressing
+       lands on the wrong rows and the picture garbles */
+    feedGeom = await fetchGeometry(meta) || {cols: 220, rows: 50};
+    if(state.current !== id || state.termWs) return;
+    if(window.Terminal){
+      try{
+        feedTerm = new window.Terminal({
+          cols: feedGeom.cols, rows: feedGeom.rows,
+          fontSize: 11, fontFamily: '"SF Mono", Menlo, monospace',
+          theme: { background: "#000000", foreground: "#c8d4f0" },
+          convertEol: false, cursorBlink: false, disableStdin: true, scrollback: 5000,
+        });
+        feedTerm.open(host);
+        host.scrollTop = host.scrollHeight;
+      }catch(e){ feedTerm = null; }
+    }
     /* prefer the runner's loopback direct-attach listener (token in query,
        same machine) : falls back to the server relay path otherwise */
     let url = null;
@@ -1527,12 +1538,10 @@ function startTermFeed(id, force){
 $id("livefeed").addEventListener("toggle", ()=>{
   if($id("livefeed").open){
     if(!state.termWs && state.current) startTermFeed(state.current, true);
-    setTimeout(fitFeed, 40);
   } else if(state.termWs){
     stopTermFeed(); feedState("DETACHED");
   }
 });
-window.addEventListener("resize", fitFeed);
 
 /* ---------- clocks ---------- */
 function pad(n){return String(n).padStart(2,"0")}

@@ -9,8 +9,12 @@ Run:  python3 server.py   ->  http://127.0.0.1:6768
 """
 import base64
 import hashlib
+import json
 import os
+import re
+import shutil
 import socket
+import subprocess
 import threading
 import urllib.error
 import urllib.request
@@ -26,6 +30,32 @@ SIG_PATH = os.path.expanduser("~/.omnigent/local_server.sig")
 
 with open(SIG_PATH) as f:
     SIG = f.read().strip()
+
+# Read-only terminal viewers must render at the pane's own geometry (the
+# runner attaches with ignore-size, so the viewer cannot reflow it). The
+# bridge metadata carries the tmux socket + target; this endpoint maps them
+# to cols/rows via tmux. Only Omnigent's own terminal sockets are accepted.
+TMUX_SOCKET_RE = re.compile(r"/omnigent-terminal-[A-Za-z0-9_]+/tmux\.sock$")
+
+
+def tmux_geometry(socket_path, target):
+    if not TMUX_SOCKET_RE.search(socket_path) or not os.path.exists(socket_path):
+        return None
+    tmux = shutil.which("tmux")
+    if not tmux:
+        return None
+    try:
+        out = subprocess.run(
+            [tmux, "-S", socket_path, "display-message", "-p", "-t", target,
+             "#{pane_width} #{pane_height}"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if out.returncode != 0:
+            return None
+        cols, _, rows = out.stdout.strip().partition(" ")
+        return {"cols": int(cols), "rows": int(rows)}
+    except Exception:
+        return None
 
 
 class BridgeHandler(SimpleHTTPRequestHandler):
@@ -161,7 +191,20 @@ class BridgeHandler(SimpleHTTPRequestHandler):
         up.close()
 
     def do_GET(self):
-        if self.path == "/api" or self.path.startswith("/api/"):
+        if self.path.startswith("/api/tmux-geometry?"):
+            from urllib.parse import urlparse, parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            geo = tmux_geometry(
+                (q.get("socket") or [""])[0],
+                (q.get("target") or [""])[0],
+            )
+            body = json.dumps(geo).encode() if geo else b"{}"
+            self.send_response(200 if geo else 404)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path == "/api" or self.path.startswith("/api/"):
             if (self.headers.get("Upgrade") or "").lower() == "websocket":
                 self._tunnel_ws()
                 return
