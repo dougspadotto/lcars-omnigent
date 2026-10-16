@@ -714,16 +714,39 @@ async function api(path, opts={}){
   const ct = r.headers.get("content-type")||"";
   return ct.includes("json") ? r.json() : r.text();
 }
-function beep(freq){
+/* ---------- LCARS audio : synthesized blips / chirps / buzz ---------- */
+function tone(freq, dur=0.09, type="square", vol=0.055, when=0){
   if(!state.sndOn) return;
-  state.actx = state.actx || new (window.AudioContext||window.webkitAudioContext)();
-  const o = state.actx.createOscillator(), g = state.actx.createGain();
-  o.type="square"; o.frequency.value=freq;
-  g.gain.setValueAtTime(0.06,state.actx.currentTime);
-  g.gain.exponentialRampToValueAtTime(0.0001,state.actx.currentTime+0.09);
-  o.connect(g); g.connect(state.actx.destination);
-  o.start(); o.stop(state.actx.currentTime+0.1);
+  try{
+    state.actx = state.actx || new (window.AudioContext||window.webkitAudioContext)();
+    const t = state.actx.currentTime + when;
+    const o = state.actx.createOscillator(), g = state.actx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(state.actx.destination);
+    o.start(t); o.stop(t + dur + 0.03);
+  }catch(e){}
 }
+function beep(freq){ tone(freq); }
+function chirp(seq, dur=0.07, gap=0.07){ seq.forEach((f,i)=>tone(f, dur, "square", 0.05, i*gap)); }
+function buzz(){ tone(160,0.28,"sawtooth",0.07); tone(110,0.32,"sawtooth",0.05,0.03); }
+const sfx = {
+  nav:      ()=>chirp([520,760]),                 // rail view switch
+  select:   ()=>tone(500),                        // list/picker selection
+  expand:   ()=>tone(470),                        // folder fold/unfold
+  bind:     ()=>chirp([600,900]),                 // session bound
+  live:     ()=>tone(520),                        // new transcript activity
+  transmit: ()=>chirp([660,880,1100],0.05,0.05),  // directive sent
+  launched: ()=>chirp([660,880,1320],0.06,0.06),  // session launched
+  error:    buzz,                                 // failures
+  purge:    ()=>chirp([500,320,180],0.09,0.09),   // session purge
+  open:     ()=>tone(700),                        // picker open
+  close:    ()=>tone(300),                        // picker dismiss
+  toggle:   ()=>chirp([340,620]),                 // rail collapse/restore
+  sndOn:    ()=>chirp([760,1020]),                // audio enabled
+  sndOff:   ()=>tone(300),                        // audio disabled
+};
 
 /* ---------- boot ---------- */
 async function boot(){
@@ -809,7 +832,7 @@ function renderSessions(){
     head.innerHTML = `<span class="fharrow">${open?"&#9662;":"&#9656;"}</span>${esc(label)} : ${arr.length}`;
     head.addEventListener("click", ()=>{
       open ? OPEN_FOLDERS.delete(key) : OPEN_FOLDERS.add(key);
-      renderSessions(); beep(470);
+      renderSessions(); sfx.expand();
     });
     list.appendChild(head);
     if(open){
@@ -868,7 +891,7 @@ async function bindSession(id){
   renderSessions();
   await pollTranscript();
   startLive();
-  beep(620);
+  sfx.bind();
 }
 
 async function pollTranscript(){
@@ -882,7 +905,7 @@ async function pollTranscript(){
     const added = items.filter(i => !prev.has(i.id)).length;
     state.lastItems = next;
     renderTranscript(items);
-    if(added > 0 && prev.size > 0) beep(520);
+    if(added > 0 && prev.size > 0) sfx.live();
   }catch(e){
     if($id("msgs").children.length <= 1)
       $id("msgs").innerHTML = `<div class="msg"><div class="who system">SYSTEM</div><div class="body">TRANSCRIPT ERROR : ${esc(e.message)}</div></div>`;
@@ -1028,11 +1051,11 @@ async function send(){
       method: "POST",
       body: JSON.stringify({type:"message", data:{role:"user", content:[{type:"input_text", text}]}}),
     });
-    beep(880);
+    sfx.transmit();
     setTimeout(pollTranscript, 800);
   }catch(e){
     sysLine("TRANSMISSION FAILED : " + e.message);
-    beep(220);
+    sfx.error();
   }
 }
 function sysLine(text){
@@ -1052,6 +1075,7 @@ async function purgeCurrent(){
   try{
     await api(`/sessions/${state.current}`, {method:"DELETE"});
     sysLine("SESSION PURGED : " + short(state.current));
+    sfx.purge();
     stopLive();
     state.current = null;
     $id("conTitle").textContent = "NO SESSION BOUND";
@@ -1124,7 +1148,7 @@ regBtn.addEventListener("click", ()=>{
   $id("sessConsole").style.display = "none";
   renderRegistry(state.regSel);
   $id("hdrTitle").textContent = "OMNIGENT ACCESS : REGISTRIES";
-  beep(560);
+  sfx.nav();
 });
 
 document.querySelectorAll("#regNav .fbtn").forEach(b=>{
@@ -1132,7 +1156,7 @@ document.querySelectorAll("#regNav .fbtn").forEach(b=>{
     state.regSel = b.dataset.reg;
     document.querySelectorAll("#regNav .fbtn").forEach(x=>x.classList.toggle("sel", x===b));
     renderRegistry(state.regSel);
-    beep(500);
+    sfx.select();
   });
 });
 
@@ -1166,7 +1190,7 @@ document.querySelectorAll(".rail .btn[data-view]").forEach(b=>{
         $id("cmdline").focus();
       }
     }
-    beep(520);
+    sfx.nav();
   });
 });
 $id("refreshBtn").addEventListener("click", async ()=>{
@@ -1261,10 +1285,11 @@ function buildPick(id, items, getLabel, setLabel){
     b.innerHTML = (it.desc ? `<span class="pd">${esc(it.desc)}</span>` : "") + esc(it.label);
     b.addEventListener("click", async ()=>{
       setLabel(it.label);
-      beep(500);
+      sfx.select();
       if(id === "pickAgents"){
         await loadPickerModels();
       }
+      sfx.select();
       buildPick(id, items, getLabel, setLabel);
     });
     box.appendChild(b);
@@ -1305,9 +1330,9 @@ async function openPicker(agentPrefill){
   if(!$id("pickWs").value) $id("pickWs").value = "~/code";
   $id("overlay").classList.add("open");
   $id("pickWs").focus();
-  beep(700);
+  sfx.open();
 }
-function closePicker(){ $id("overlay").classList.remove("open"); beep(300); }
+function closePicker(){ $id("overlay").classList.remove("open"); sfx.close(); }
 $id("newBtn").addEventListener("click", ()=>openPicker());
 $id("mClose").addEventListener("click", closePicker);
 $id("mCancel").addEventListener("click", closePicker);
@@ -1342,11 +1367,11 @@ $id("mLaunch").addEventListener("click", async ()=>{
     closePicker();
     await refreshSessions();
     bindSession(id);
+    sfx.launched();
     sysLine(launchNote + " : " + short(id) + " : AGENT " + selAgent.toUpperCase() + " : WS " + ws);
-    beep(880);
   }catch(e){
     sysLine("LAUNCH FAILED : " + e.message);
-    beep(220);
+    sfx.error();
   }finally{
     $id("mLaunch").textContent = "LAUNCH";
   }
@@ -1356,7 +1381,7 @@ $id("mLaunch").addEventListener("click", async ()=>{
 function toggleRail(){
   document.body.classList.toggle("railhidden");
   $id("railTab").textContent = document.body.classList.contains("railhidden") ? "»" : "«";
-  beep(document.body.classList.contains("railhidden") ? 340 : 620);
+  sfx.toggle();
 }
 $id("railTab").addEventListener("click", toggleRail);
 document.querySelector(".elbow-logo").addEventListener("click", toggleRail);
@@ -1374,12 +1399,20 @@ function tick(){
 tick(); setInterval(tick,1000);
 
 /* ---------- audio toggle ---------- */
+/* ---------- audio toggle (preference persisted) ---------- */
 state.sndOn = false; state.actx = null;
 $id("sndBtn").addEventListener("click",()=>{
   state.sndOn = !state.sndOn;
   $id("sndBtn").textContent = "AUDIO : " + (state.sndOn?"ON":"OFF");
-  if(state.sndOn) beep(760);
+  try{ localStorage.setItem("lcars_snd", state.sndOn ? "on" : "off"); }catch(e){}
+  (state.sndOn ? sfx.sndOn : sfx.sndOff)();
 });
+try{
+  if(localStorage.getItem("lcars_snd") === "on"){
+    state.sndOn = true;
+    $id("sndBtn").textContent = "AUDIO : ON";
+  }
+}catch(e){}
 
 /* ---------- wire static buttons ---------- */
 $id("sendBtn").addEventListener("click", send);
