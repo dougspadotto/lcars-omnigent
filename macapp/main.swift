@@ -112,8 +112,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         task.arguments = ["-c", """
         /usr/bin/pkill -f 'lcars-omnigent/server.py' 2>/dev/null
         /bin/sleep 0.5
-        PY="$HOME/.pyenv/versions/3.13.12/bin/python3"
-        [ -x "$PY" ] || PY=/usr/bin/python3
+        PY="${LCARS_PYTHON:-}"
+        [ -z "$PY" ] && PY="$(ls "$HOME"/.pyenv/versions/*/bin/python3 2>/dev/null | sort -V | tail -1)"
+        [ -z "$PY" ] && PY="$(command -v python3 || true)"
+        [ -z "$PY" ] && PY=/usr/bin/python3
         /usr/bin/nohup "$PY" "$HOME/code/lcars-omnigent/server.py" >> "$HOME/Library/Logs/lcars-bridge.log" 2>&1 &
         for i in $(seq 1 20); do
           /usr/bin/curl -s -o /dev/null --max-time 1 http://127.0.0.1:6768/ && break
@@ -128,8 +130,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         task.executableURL = URL(fileURLWithPath: "/bin/bash")
         task.arguments = ["-c", """
         if ! /usr/bin/curl -s -o /dev/null --max-time 2 http://127.0.0.1:6768/; then
-          PY="$HOME/.pyenv/versions/3.13.12/bin/python3"
-          [ -x "$PY" ] || PY=/usr/bin/python3
+          PY="${LCARS_PYTHON:-}"
+          [ -z "$PY" ] && PY="$(ls "$HOME"/.pyenv/versions/*/bin/python3 2>/dev/null | sort -V | tail -1)"
+          [ -z "$PY" ] && PY="$(command -v python3 || true)"
+          [ -z "$PY" ] && PY=/usr/bin/python3
           /usr/bin/nohup "$PY" "$HOME/code/lcars-omnigent/server.py" >> "$HOME/Library/Logs/lcars-bridge.log" 2>&1 &
           for i in $(seq 1 20); do
             /usr/bin/curl -s -o /dev/null --max-time 1 http://127.0.0.1:6768/ && break
