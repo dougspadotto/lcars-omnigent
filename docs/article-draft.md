@@ -61,3 +61,19 @@ The interface was largely built by the agent it now wraps, while I watched its t
 Smart assistants have been five years away for forty years. What changed recently is not that agents got smarter, but that they became inspectable: real runtimes with session APIs, transcripts, terminal access, and governance, running locally, in the open, under an Apache license. Once a runtime has a real API, a skin is just an evening of work. Mine is unfinished, occasionally stubborn, and an absolute joy to leave fullscreen on my second monitor, stardate ticking, while I talk to the ship.
 
 Engage.
+
+---
+
+## LinkedIn blurb (for the share)
+
+As a lifelong Star Trek fan, I have always known exactly what a computer should look like: angled panels, oversized type, and a stardate ticking in the corner. So I built that for my AI agents.
+
+I put an LCARS skin on Omnigent, the open-source agent runtime I use every day. Strictly a skin, no new functionality: live view of the agent's terminal, prompts I can answer from the bridge, voice input through Superwhisper, so "Computer" is implied. All the actual work is done by Omnigent itself (Apache 2.0).
+
+Work in progress, occasionally stubborn, absolute joy on a second monitor. Personal project, not a product announcement.
+
+Full article: [link]
+
+Engage.
+
+#StarTrek #AIagents #OpenSource
