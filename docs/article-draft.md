@@ -26,7 +26,7 @@ Full disclosure: I work at Databricks. This is a personal side project on the op
 
 ![The conversation view: user and agent messages only, with a rendered results table](screenshots/02-conversation-view.png)
 
-The build, very much work in progress, lives in a [small repo](https://github.com/douglas-spadotto_data/lcars-omnigent). Three pieces:
+The build, very much work in progress, lives in a [small repo](https://github.com/dougspadotto/lcars-omnigent). Three pieces:
 
 - A single-file web UI: the LCARS panel with the orange-and-lavender geometry, a collapsible nav rail, project folders for sessions, and a "Federation of Agents" badge I drew as an homage to the UFP seal (there is a mockup folder in the repo if you want to see how far it drifted from the first sketch).
 - A thin [Python](https://www.python.org) proxy, standard library only, bridging the UI to the local Omnigent server.
