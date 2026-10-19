@@ -66,14 +66,12 @@ Engage.
 
 ## LinkedIn blurb (for the share)
 
-As a lifelong Star Trek fan, I have always known exactly what a computer should look like: angled panels, oversized type, and a stardate ticking in the corner. So I built that for my AI agents.
+"Tea, Earl Grey, hot" has been my benchmark for computers since childhood. My AI agents finally meet it.
 
-I put an LCARS skin on Omnigent, the open-source agent runtime I use every day. Strictly a skin, no new functionality: live view of the agent's terminal, prompts I can answer from the bridge, voice input through Superwhisper, so "Computer" is implied. All the actual work is done by Omnigent itself (Apache 2.0).
+I skinned Omnigent, the open-source agent runtime I use daily, in full LCARS: angled panels, a ticking stardate, a live feed of my agent's terminal, prompts I answer from the bridge, voice input via Superwhisper. Strictly a skin: Omnigent (Apache 2.0) does all the work.
 
-Work in progress, occasionally stubborn, absolute joy on a second monitor. Personal project, not a product announcement.
+Work in progress, occasionally stubborn, glorious in fullscreen. Personal project.
 
-Full article: [link]
-
-Engage.
+Engage. [link]
 
 #StarTrek #AIagents #OpenSource
