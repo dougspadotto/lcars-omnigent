@@ -509,9 +509,9 @@ td.ws{color:#8a8fa8;font-size:13px}
             <div class="mrow"><span class="mname">CHAT DB</span><span class="mval" style="flex:1;text-align:left;color:var(--blue)">~/.omnigent/chat.db : 462 CONV</span></div>
             <div class="mrow"><span class="mname">AUTH</span><span class="mval" style="flex:1;text-align:left;color:#88BB88">SIGNATURE OK</span></div>
             <div class="mrow" style="margin-top:14px"><span class="mname">RUNNERS</span></div>
-            <div class="runner"><span class="dot live"></span><span class="rn">claude : douglas.spadotto</span><span class="rs">CONNECTED</span></div>
-            <div class="runner"><span class="dot live"></span><span class="rn">researcher : gtm-ai-fde</span><span class="rs">CONNECTED</span></div>
-            <div class="runner"><span class="dot"></span><span class="rn">fevm-deployer : supply&#8209;chain&#8209;tower</span><span class="rs">IDLE</span></div>
+            <div class="runner"><span class="dot live"></span><span class="rn">claude : operator</span><span class="rs">CONNECTED</span></div>
+            <div class="runner"><span class="dot live"></span><span class="rn">researcher : staging</span><span class="rs">CONNECTED</span></div>
+            <div class="runner"><span class="dot"></span><span class="rn">deployer : staging</span><span class="rs">IDLE</span></div>
             <div class="runner"><span class="dot"></span><span class="rn">reconciler : detached</span><span class="rs">OFFLINE</span></div>
           </div>
         </div>
@@ -593,24 +593,24 @@ td.ws{color:#8a8fa8;font-size:13px}
 <script>
 /* ===== mock data ===== */
 const SESSIONS = [
-  ["conv_9f3a21","claude","~/code/bradesco-migration-control-plane","RUNNING","glm-5-3-flash","$4.18","2 MIN AGO"],
+  ["conv_9f3a21","claude","~/code/alpha-migration-control-plane","RUNNING","glm-5-3-flash","$4.18","2 MIN AGO"],
   ["conv_7e88c4","claude","~/code/lcars-omnigent","RUNNING","claude-opus-4-8","$0.94","NOW"],
   ["conv_5b1d09","researcher","~/code/fdehub","IDLE","claude-opus-4-8","$12.60","3 H AGO"],
-  ["conv_4a77e1","fevm-deployer","fevm-supply-chain-tower","FAILED","glm-5-3-flash","$0.31","4 H AGO"],
+  ["conv_4a77e1","cloud-deployer","staging-host","FAILED","glm-5-3-flash","$0.31","4 H AGO"],
   ["conv_3c92f7","claude","~/code/diagnostico-estate-sas","COMPLETE","glm-5-3-flash","$8.77","YESTERDAY"],
   ["conv_2d15aa","researcher","~/code/sas-migration-tracker-noapp","IDLE","claude-sonnet-5-5","$2.05","YESTERDAY"],
   ["conv_1f603b","claude","~/code/post-project-qa-agent","COMPLETE","claude-opus-4-8","$21.44","2026-10-14"],
-  ["conv_e81c52","reconciler","fevm-supply-chain-tower","FAILED","glm-5-3-flash","$0.02","2026-10-13"],
+  ["conv_e81c52","reconciler","staging-host","FAILED","glm-5-3-flash","$0.02","2026-10-13"],
   ["conv_d44a98","claude","~/code/telecom-b2b-migration-demo","COMPLETE","glm-5-3-flash","$1.19","2026-10-12"],
   ["conv_b7016e","researcher","~/Brain/00-Brain","IDLE","claude-sonnet-5-5","$0.58","2026-10-11"],
-  ["conv_a29f11","claude","~/code/itau-lf-uc-foundation","COMPLETE","claude-opus-4-8","$6.90","2026-10-10"],
-  ["conv_88ee03","fevm-deployer","fevm-supply-chain-tower","COMPLETE","glm-5-3-flash","$3.42","2026-10-09"],
+  ["conv_a29f11","claude","~/code/beta-data-foundation","COMPLETE","claude-opus-4-8","$6.90","2026-10-10"],
+  ["conv_88ee03","cloud-deployer","staging-host","COMPLETE","glm-5-3-flash","$3.42","2026-10-09"],
 ];
 
 const AGENTS = [
   ["CLAUDE CODE","claude-code","v2.1.299","glm-5-3-flash","10 MCP : glean, jira, slack, confluence, logfood, lakedraw, web-search, chrome, genie, omnigent","READY","var(--lavender)"],
   ["RESEARCHER","sys_session subagent","sys v1","claude-opus-4-8","read-only explore : brain, drive, slack, github kb","READY","var(--blue)"],
-  ["FEVM DEPLOYER","sys_session subagent","sys v1","glm-5-3-flash","databricks app deploy : fevm-supply-chain-tower, gtm-ai-fde","READY","var(--periwinkle)"],
+  ["CLOUD DEPLOYER","sys_session subagent","sys v1","glm-5-3-flash","cloud app deploy : staging, production","READY","var(--periwinkle)"],
   ["RECONCILER","data-contract-reconciler","v0.9","glm-5-3-flash","contract vs DDL vs EDC vs repo : fuzzy + LLM match","DETACHED","var(--coral)"],
   ["QA POSTPROJECT","post-project-qa-agent","v1.1","claude-sonnet-5-5","RSA engagement Q/A : project kb + platform scope","READY","var(--gold)"],
   ["OMNIGENT HOST","local runtime","6767","n/a","sessions, runners, agents, evals : sig auth","ONLINE","var(--orange)"],
@@ -813,7 +813,7 @@ function typewrite(el,text){
 const PICK_AGENTS = [
   ["claude-code","DEFAULT : 10 MCP BINDINGS","var(--lavender)"],
   ["researcher","READ-ONLY EXPLORE SUBAGENT","var(--blue)"],
-  ["fevm-deployer","DATABRICKS APP DEPLOY","var(--periwinkle)"],
+  ["cloud-deployer","CLOUD APP DEPLOY","var(--periwinkle)"],
   ["qa-postproject","RSA ENGAGEMENT Q/A","var(--gold)"],
   ["reconciler","CONTRACT RECONCILIATION","var(--coral)"],
 ];

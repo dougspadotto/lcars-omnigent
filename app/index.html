@@ -172,6 +172,25 @@ body{
   text-align:left;padding:5px 10px 3px;border-radius:10px;border:none;cursor:pointer;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;line-height:1.25;
 }
+.sessItem{position:relative;padding-right:64px}
+.sessItem .ract{
+  display:none;position:absolute;right:4px;top:50%;transform:translateY(-50%);
+  background:#1a2438;color:#c8d4f0;border:1px solid #2a3a55;border-radius:6px;
+  font-size:10px;font-weight:700;letter-spacing:.05em;padding:2px 5px;cursor:pointer;
+}
+.sessItem:hover .ract{display:inline-block}
+.sessItem .ract:hover{background:#2a3a55;color:#fff}
+.sessItem .ract.del:hover{background:#5a1a1a;border-color:#7a2a2a;color:#ffb0b0}
+.movechooser{
+  display:flex;flex-wrap:wrap;gap:4px;padding:4px 10px 6px;
+  background:#0d1120;border-radius:0 0 10px 10px;
+}
+.movechooser button{
+  background:#1a2438;color:#c8d4f0;border:1px solid #2a3a55;border-radius:8px;
+  font-family:var(--font);font-weight:700;font-size:11px;letter-spacing:.05em;
+  padding:4px 10px;cursor:pointer;white-space:nowrap;
+}
+.movechooser button:hover{background:#2a3a55;color:#fff}
 .sessItem:hover{background:#1a2036}
 .sessItem.sel{outline:2px solid var(--orange);background:#1a2036}
 .sessItem .sdot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:1px}
@@ -865,7 +884,53 @@ function renderSessions(){
         b.innerHTML = statusDot(s.status) + esc(s.title || "("+short(s.id)+")");
         b.title = `${s.title||""} : ${s.agent_name||""} : ${shortWs(wsOf(s))}`;
         b.addEventListener("click", ()=>bindSession(s.id));
+        /* row actions : move between project folders, delete */
+        const mv = document.createElement("span");
+        mv.className = "ract"; mv.textContent = "MOVE";
+        mv.title = "MOVE TO / FROM A PROJECT FOLDER";
+        mv.addEventListener("click", e=>{
+          e.stopPropagation();
+          state.moveFor = (state.moveFor === s.id) ? null : s.id;
+          renderSessions();
+        });
+        const del = document.createElement("span");
+        del.className = "ract del"; del.textContent = "DEL";
+        del.title = "DELETE THIS SESSION";
+        del.addEventListener("click", e=>{
+          e.stopPropagation();
+          if(!confirm("DELETE SESSION " + short(s.id) + ((s.title) ? " : "+s.title : "") + " ? THIS REMOVES IT FROM THE OMNIGENT STORE.")) return;
+          api(`/sessions/${s.id}`, {method:"DELETE"})
+            .then(()=>{
+              sysLine("SESSION DELETED : " + short(s.id));
+              if(state.current === s.id){ state.current = null; stopLive(); $id("sessConsole").style.display = "none"; $id("sessStandby").style.display = "flex"; $id("conTitle").textContent = "NO SESSION BOUND"; }
+              refreshSessions();
+            })
+            .catch(err=>{ sysLine("DELETE FAILED : " + err.message); sfx.error(); });
+        });
+        b.appendChild(mv);
+        b.appendChild(del);
         list.appendChild(b);
+        if(state.moveFor === s.id){
+          const ch = document.createElement("div");
+          ch.className = "movechooser";
+          const mk = (label, pid) => {
+            const cb = document.createElement("button");
+            cb.textContent = label;
+            cb.addEventListener("click", async ()=>{
+              try{
+                await api(`/sessions/${s.id}`, {method:"PATCH", body: JSON.stringify({project_id: pid})});
+                s.project_id = pid || null;
+                state.moveFor = null;
+                await refreshSessions();
+                sysLine("MOVED : " + short(s.id) + " : " + label);
+              }catch(err){ sysLine("MOVE FAILED : " + err.message); sfx.error(); }
+            });
+            return cb;
+          };
+          ch.appendChild(mk("UNFILE", ""));
+          state.projects.forEach(p=>ch.appendChild(mk((p.name||"project").toUpperCase(), p.id)));
+          list.appendChild(ch);
+        }
       });
       if(arr.length > 40){
         const more = document.createElement("div");

@@ -175,7 +175,8 @@ class BridgeHandler(SimpleHTTPRequestHandler):
             f"Sec-WebSocket-Key: {key}\r\n"
             "Sec-WebSocket-Version: 13\r\n"
             f"X-Local-Server-Signature: {SIG}\r\n"
-            "X-Forwarded-Email: douglas.spadotto@databricks.com\r\n\r\n"
+            + (f"X-Forwarded-Email: {os.environ['LCARS_FORWARD_EMAIL']}\r\n" if os.environ.get("LCARS_FORWARD_EMAIL") else "")
+            + "\r\n"
         )
         up.sendall(req.encode())
         resp = b""
