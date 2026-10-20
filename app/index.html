@@ -171,6 +171,15 @@ body{
 }
 .sessItem.dragging{opacity:.45}
 .folderHead .fharrow{float:left;font-size:11px;opacity:.7}
+.workstatus{
+  display:none;align-items:center;gap:8px;
+  padding:5px 12px;margin:8px 0 0;
+  background:#141a2b;border:1px solid #2a3a55;border-radius:10px;
+  font-family:var(--mono);font-size:12px;color:#c9d6f2;white-space:nowrap;overflow:hidden;
+}
+.workstatus .wsglyph{color:var(--tangerine);font-weight:700;animation:blink 1s steps(1) infinite}
+.workstatus .wsverb{color:var(--tangerine);font-weight:700;letter-spacing:.08em;font-family:var(--font);font-size:12px}
+.workstatus .wstiming{color:#6f77a0}
 .sessItem{
   background:#0d1120;color:#cfd6ee;font-family:var(--font);font-weight:500;font-size:13px;
   text-align:left;padding:5px 10px 3px;border-radius:10px;border:none;cursor:pointer;
@@ -597,6 +606,7 @@ details.exec .targ{
             <div class="msgs" id="msgs">
               <div class="msg"><div class="who system">SYSTEM</div><div class="body">Select a session in the folders to bind the console.</div></div>
             </div>
+            <div id="workStatus" class="workstatus" style="display:none"></div>
             <div class="inputrow">
               <div class="inputframe">
                 <span class="prompt">&gt;</span>
@@ -1164,9 +1174,10 @@ function renderTranscript(items){
      (reasoning, tool calls and outputs) is what the LIVE OUTPUT pane
      shows while running, so it never pours back in when the turn ends */
   const box = $id("msgs");
-  /* follow the tail only when the reader is already there : scrolling up
-     to read must not be yanked back by poll/SSE re-renders */
-  const stick = state.forceScroll || (box.scrollHeight - box.scrollTop - box.clientHeight < 80);
+  /* follow the tail unless the reader scrolled up on purpose : the intent
+     is latched on scroll, so a layout change (live pane opening) or a
+     re-render cannot leave the window stranded above the tail */
+  const stick = state.forceScroll || state.userAtBottom !== false;
   state.forceScroll = false;
   box.innerHTML = "";
   let last = null;
@@ -1241,8 +1252,20 @@ function renderTranscript(items){
     }
   }
   if(askStable && askCardEl) box.appendChild(askCardEl);
-  if(stick) box.scrollTop = box.scrollHeight;
+  if(stick){ box.scrollTop = box.scrollHeight; state.userAtBottom = true; }
 }
+
+/* pin the transcript to the tail after any layout change, unless the user
+   is deliberately scrolled up reading older messages */
+function pinMsgs(){
+  if(state.userAtBottom === false) return;
+  const b = $id("msgs");
+  b.scrollTop = b.scrollHeight;
+}
+$id("msgs").addEventListener("scroll", ()=>{
+  const b = $id("msgs");
+  state.userAtBottom = (b.scrollHeight - b.scrollTop - b.clientHeight) < 80;
+});
 
 function startLive(){
   stopLive();
@@ -1712,7 +1735,38 @@ function stopTermFeed(){
   state.feedMeta = null;
   state.askSig = null; state.askStreak = 0;
   hideAsk();
+  updateWorkStatus();
   state.feedBuf = "";
+}
+
+/* the harness paints its activity (Forging…, Deltamaxxing…) at the bottom
+   of the terminal : mirror the latest one onto the main window */
+function updateWorkStatus(){
+  const el = $id("workStatus");
+  if(!el) return;
+  let line = null;
+  if(feedTerm && state.termWs){
+    try{
+      const buf = feedTerm.buffer.active;
+      for(let y = buf.length-1; y >= Math.max(0, buf.length-12); y--){
+        const l = buf.getLine(y);
+        const t = l ? l.translateToString(true).trim() : "";
+        if(!t) continue;
+        /* <spinner glyph> <Verb-ing>… (58s · ↓ 2.8k tokens) : the timing
+           paren must contain a digit so quoted prose cannot fake it */
+        const m = t.match(/^\W*\s*([A-Za-z][\w' -]*?)(?:…|\.{3})\s*\(([^)]*\d[^)]*)\)/);
+        if(m){ line = {verb: m[1].trim(), timing: m[2].trim()}; break; }
+      }
+    }catch(e){}
+  }
+  if(line){
+    el.style.display = "flex";
+    el.innerHTML = `<span class="wsglyph">✶</span><span class="wsverb">${esc(line.verb.toUpperCase())}</span>`+
+      `<span class="wstiming">${esc(line.timing)}</span>`;
+  } else {
+    el.style.display = "none";
+    el.innerHTML = "";
+  }
 }
 function feedWrite(data){
   if(!feedTerm) return;
@@ -1721,13 +1775,17 @@ function feedWrite(data){
      after it, since a working harness repaints its spinner constantly */
   state.feedLastWriteAt = Date.now();
   const box = $id("livefeed");
-  if(!box.open) box.open = true;
+  const opened = !box.open;
+  if(opened) box.open = true;
   /* the grid is the pane's full height, taller than the panel : follow the
      live tail unless the user scrolled up to inspect older rows */
   const host = $id("livefeedText");
   if(host.scrollHeight - host.scrollTop - host.clientHeight < 48){
     host.scrollTop = host.scrollHeight;
   }
+  /* the panel opening shrinks the transcript : re-pin it to the tail */
+  if(opened) pinMsgs();
+  updateWorkStatus();
 }
 async function fetchGeometry(meta){
   try{
@@ -1814,6 +1872,7 @@ async function startTermFeed(id, force){
   }).catch(()=>feedState("NO TERMINAL"));
 }
 $id("livefeed").addEventListener("toggle", ()=>{
+  pinMsgs();
   if($id("livefeed").open){
     if(turnView) return;
     if(!state.termWs && state.current) startTermFeed(state.current, true);
@@ -2076,6 +2135,7 @@ function showAsk(det){
 }
 function scanAsk(){
   if(!state.termWs || !feedTerm || !window.Terminal) return;
+  updateWorkStatus();
   const det = detectPrompt(viewportLines());
   if(det){
     const sig = JSON.stringify(det);
