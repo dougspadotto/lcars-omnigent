@@ -1208,12 +1208,15 @@ function renderTranscript(items){
   }
   /* code blocks carry the same copy affordance the CLI shows */
   box.querySelectorAll(".body.md .mdcode").forEach(cd=>{
+    /* capture the code before the button lands inside it : the button is
+       a child, so textContent at click time would include its own label */
+    const codeText = cd.textContent;
     const b = document.createElement("button");
     b.className = "copycode";
     b.textContent = "⧉ COPY";
     b.title = "COPY CODE";
     b.addEventListener("click", ()=>{
-      navigator.clipboard.writeText(cd.textContent).then(()=>{
+      navigator.clipboard.writeText(codeText).then(()=>{
         b.textContent = "✓ COPIED";
         b.classList.add("ok");
         setTimeout(()=>{ b.textContent = "⧉ COPY"; b.classList.remove("ok"); }, 1200);
