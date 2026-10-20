@@ -166,6 +166,10 @@ body{
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;
 }
 .folderHead:hover{filter:brightness(1.15)}
+.folderHead.dropTarget{
+  outline:3px dashed var(--black);outline-offset:-4px;filter:brightness(1.2);
+}
+.sessItem.dragging{opacity:.45}
 .folderHead .fharrow{float:left;font-size:11px;opacity:.7}
 .sessItem{
   background:#0d1120;color:#cfd6ee;font-family:var(--font);font-weight:500;font-size:13px;
@@ -893,6 +897,37 @@ function renderSessions(){
       open ? OPEN_FOLDERS.delete(key) : OPEN_FOLDERS.add(key);
       renderSessions(); sfx.expand();
     });
+    /* drop target : drop a session here to file it, unfile it, or hold it
+       in ACTIVE ; dropping is an explicit move so it releases the hold */
+    head.addEventListener("dragover", e=>{
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      head.classList.add("dropTarget");
+    });
+    head.addEventListener("dragleave", ()=>head.classList.remove("dropTarget"));
+    head.addEventListener("drop", e=>{
+      e.preventDefault();
+      head.classList.remove("dropTarget");
+      const id = e.dataTransfer.getData("text/plain");
+      const ds = state.sessions.find(x=>x.id===id);
+      if(!ds) return;
+      state.moveFor = null;
+      if(key === "__ACTIVE__"){
+        state.activeHold.add(id); saveActiveHold();
+        renderSessions();
+        sysLine("MOVED TO ACTIVE : " + short(id) + " : " + label);
+        return;
+      }
+      state.activeHold.delete(id); saveActiveHold();
+      const pid = key === "__UNFILED__" ? "" : key;
+      api(`/sessions/${id}`, {method:"PATCH", body: JSON.stringify({project_id: pid})})
+        .then(()=>{
+          ds.project_id = pid || null;
+          refreshSessions();
+          sysLine("MOVED : " + short(id) + " : " + label);
+        })
+        .catch(err=>{ sysLine("DROP FAILED : " + err.message); sfx.error(); });
+    });
     list.appendChild(head);
     if(open){
       arr.slice(0,40).forEach(s=>{
@@ -901,6 +936,15 @@ function renderSessions(){
         b.innerHTML = statusDot(s.status) + esc(s.title || "("+short(s.id)+")");
         b.title = `${s.title||""} : ${s.agent_name||""} : ${shortWs(wsOf(s))}`;
         b.addEventListener("click", ()=>bindSession(s.id));
+        /* drag the row onto a folder header to file it, onto UNFILED to
+           unfile it, or onto ACTIVE to hold it there */
+        b.draggable = true;
+        b.addEventListener("dragstart", e=>{
+          e.dataTransfer.setData("text/plain", s.id);
+          e.dataTransfer.effectAllowed = "move";
+          b.classList.add("dragging");
+        });
+        b.addEventListener("dragend", ()=>b.classList.remove("dragging"));
         /* row actions : move between project folders, delete */
         const mv = document.createElement("span");
         mv.className = "ract"; mv.textContent = "MOVE";
