@@ -706,7 +706,13 @@ const state = {
   lastItems: new Map(), // id -> item (current transcript)
   offline: false,
   foldersInit: false,
+  /* sessions held in ACTIVE by the user : they stay there after their
+     turns finish and only return to a folder when moved out explicitly */
+  activeHold: new Set(JSON.parse(localStorage.getItem("lcars.activeHold") || "[]")),
 };
+function saveActiveHold(){
+  localStorage.setItem("lcars.activeHold", JSON.stringify([...state.activeHold]));
+}
 
 /* ---------- helpers ---------- */
 function $id(x){return document.getElementById(x)}
@@ -857,13 +863,14 @@ function renderSessions(){
   }
   list.innerHTML = "";
   const isPinned = s => !!(s.labels && s.labels["omnigent.pinned"]);
-  /* running and pinned sessions live outside the projects while active
-     and drop back to their original place once they stop */
+  /* ACTIVE holds running and pinned sessions, plus everything the user
+     worked with and has not moved away : a finished session stays here
+     until an explicit MOVE, never dropped back automatically */
   const byProject = new Map();
   const unfiled = [];
   const active = [];
   state.sessions.forEach(s => {
-    if(s.status === "running" || isPinned(s)){ active.push(s); return; }
+    if(s.status === "running" || isPinned(s) || state.activeHold.has(s.id)){ active.push(s); return; }
     const pid = s.project_id;
     if(pid && state.projects.some(p=>p.id===pid)){
       if(!byProject.has(pid)) byProject.set(pid, []);
@@ -909,6 +916,7 @@ function renderSessions(){
         del.addEventListener("click", e=>{
           e.stopPropagation();
           if(!confirm("DELETE SESSION " + short(s.id) + ((s.title) ? " : "+s.title : "") + " ? THIS REMOVES IT FROM THE OMNIGENT STORE.")) return;
+          state.activeHold.delete(s.id); saveActiveHold();
           api(`/sessions/${s.id}`, {method:"DELETE"})
             .then(()=>{
               sysLine("SESSION DELETED : " + short(s.id));
@@ -923,10 +931,26 @@ function renderSessions(){
         if(state.moveFor === s.id){
           const ch = document.createElement("div");
           ch.className = "movechooser";
+          /* moving is the explicit way out of ACTIVE : every choice here
+             clears the hold, so a finished session returns to its folder */
+          const release = ()=>{ state.activeHold.delete(s.id); saveActiveHold(); };
+          if(state.activeHold.has(s.id) && s.status !== "running" && !isPinned(s)){
+            const la = document.createElement("button");
+            la.textContent = "LEAVE ACTIVE";
+            la.title = "SEND BACK TO ITS FOLDER, KEEPING ITS PROJECT";
+            la.addEventListener("click", ()=>{
+              release();
+              state.moveFor = null;
+              renderSessions();
+              sysLine("MOVED OUT OF ACTIVE : " + short(s.id));
+            });
+            ch.appendChild(la);
+          }
           const mk = (label, pid) => {
             const cb = document.createElement("button");
             cb.textContent = label;
             cb.addEventListener("click", async ()=>{
+              release();
               try{
                 await api(`/sessions/${s.id}`, {method:"PATCH", body: JSON.stringify({project_id: pid})});
                 s.project_id = pid || null;
@@ -964,6 +988,10 @@ async function bindSession(id){
   const s = state.sessions.find(x=>x.id===id);
   if(!s) return;
   state.current = id;
+  /* working on a session pins it into ACTIVE : it stays after the turn
+     ends until the user moves it away with MOVE */
+  state.activeHold.add(id);
+  saveActiveHold();
   stopLive();
   /* bind into the sessions view main area (third column) */
   document.querySelectorAll(".rail .btn").forEach(x=>x.classList.remove("active"));
@@ -1269,6 +1297,7 @@ async function purgeCurrent(){
   const s = state.sessions.find(x=>x.id===state.current);
   if(!confirm("PURGE SESSION " + short(state.current) + ((s&&s.title) ? " : "+s.title : "") + " ? THIS DELETES IT FROM THE OMNIGENT STORE.")) return;
   try{
+    state.activeHold.delete(state.current); saveActiveHold();
     await api(`/sessions/${state.current}`, {method:"DELETE"});
     sysLine("SESSION PURGED : " + short(state.current));
     sfx.purge();
