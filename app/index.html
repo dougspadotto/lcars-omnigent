@@ -1169,6 +1169,13 @@ function mdToHtml(src){
   return html;
 }
 
+/* harness plumbing the mirror delivers as user messages : system-reminder
+   context blobs (environment, memory, tool listings) can run tens of KB
+   and are not part of the conversation, so the main window skips them */
+function isHarnessContext(text){
+  return /^\s*<system-(reminder|warning)>/i.test(text || "");
+}
+
 function renderTranscript(items){
   /* the main screen is the conversation only : the working stream
      (reasoning, tool calls and outputs) is what the LIVE OUTPUT pane
@@ -1187,6 +1194,7 @@ function renderTranscript(items){
       const role = i.role;
       const parts = (i.content||[]).map(c => c.text || c.transcript || "").filter(Boolean);
       const text = parts.join("\n").trim();
+      if(isHarnessContext(text)) return;
       if(!text) return;
       const div = document.createElement("div");
       div.className = "msg";
@@ -2221,7 +2229,7 @@ function commandHistory(){
     .filter(i => i.type === "message" && i.role === "user")
     .sort((a,b)=>(a.created_at||0)-(b.created_at||0))
     .map(i => (i.content||[]).map(c => c.text || "").join("").trim())
-    .filter(Boolean);
+    .filter(t => t && !isHarnessContext(t));
   if(state.pendingUser && !arr.includes(state.pendingUser)) arr.push(state.pendingUser);
   return arr;
 }
