@@ -1993,7 +1993,14 @@ function viewportLines(){
   }catch(e){ return null; }
 }
 function cleanPane(s){
-  return s.replace(/[│╭╮╰╯─━|]+/g," ").replace(/\s+/g," ").trim();
+  return s.replace(/[│╭╮╰╯─━═╌┄┈┌┐└┘|]+/g," ").replace(/\s+/g," ").trim();
+}
+/* a row that is pure line art (Claude Code draws separators with ─ but
+   command-preview boxes with ╌ and ═, all of which must stop the question
+   walk-up just like a box border) */
+function isBorderRow(l){
+  const t = (l||"").trim();
+  return t.length >= 3 && /^[╭╮╰╯─━═╌┄┈┌┐└┘+|│\-=~_]+$/.test(t);
 }
 const ASK_TRIGGER = /(do you want|would you like|how (do|would) you|which option|select (an|one|a)|choose (an|one|a)|your (choice|answer|response)|proceed\?|answer below|freeform)/i;
 /* typed replies : "2", "b", "option c", "3." select the matching option
@@ -2018,35 +2025,82 @@ function parseReply(text, options){
   }
   return {kind:"freeform", text: text.trim()};
 }
+/* the question may wrap across several lines inside its box : walk up
+   over padding rows, stop at a border row, join the question lines */
+function questionAbove(lines, first){
+  const qs = [];
+  for(let i = first-1; i >= 0 && i > first-14 && qs.length < 6; i--){
+    if(isBorderRow(lines[i])) break;
+    const c = cleanPane(lines[i]);
+    if(!c) continue;
+    qs.unshift(c);
+    if(c.includes("?") || ASK_TRIGGER.test(c)) break;
+  }
+  /* prose swept up on the way : start at the line that actually asks */
+  let k = qs.findIndex(q => q.includes("?"));
+  if(k < 0) k = Math.max(0, qs.length - 2);
+  return qs.slice(k).join(" ");
+}
 function detectPrompt(lines){
   if(!lines) return null;
   const optRe = /^\s*[│|]?\s*[❯▸]?\s*(\d)[.)]\s+(.+?)\s*[│|]*\s*$/;
   const idx = [];
   lines.forEach((l,i)=>{ if(optRe.test(l)) idx.push(i); });
-  if(idx.length < 2) return null;
-  /* the menu cursor must sit ON an option row : a bare ❯ is not evidence,
-     Claude Code also renders user messages with one */
-  if(!lines.some(l=>/^[│|]?\s*[❯▸]\s*\d[.)]/.test(l))) return null;
-  const first = idx[0];
-  /* the question may wrap across several lines inside its box : walk up
-     over padding rows, stop at the box border, join the question lines */
-  const qs = [];
-  for(let i = first-1; i >= 0 && i > first-14 && qs.length < 3; i--){
-    if(/^\s*[╭╰╯╮┌└┘┐─━+]+\s*$/.test(lines[i])) break;
-    const c = cleanPane(lines[i]);
-    if(!c) continue;
-    qs.unshift(c);
-    if(qs.length >= 2 && (c.includes("?") || ASK_TRIGGER.test(c))) break;
+  if(idx.length >= 2){
+    /* the menu cursor must sit ON an option row : a bare ❯ is not evidence,
+       Claude Code also renders user messages with one */
+    if(lines.some(l=>/^[│|]?\s*[❯▸]\s*\d[.)]/.test(l))){
+      const first = idx[0];
+      const question = questionAbove(lines, first);
+      const opts = [];
+      idx.forEach(i=>{
+        const m = lines[i].match(optRe);
+        if(m) opts.push({num: +m[1], label: cleanPane(m[2]).slice(0,120)});
+      });
+      if(question && opts.length >= 2) return {question: question.slice(0,200), options: opts};
+    }
   }
-  const question = qs.join(" ");
-  if(!question) return null;
-  const opts = [];
-  idx.forEach(i=>{
-    const m = lines[i].match(optRe);
-    if(m) opts.push({num: +m[1], label: cleanPane(m[2]).slice(0,120)});
-  });
-  if(opts.length < 2) return null;
-  return {question: question.slice(0,200), options: opts};
+  return detectUnnumbered(lines);
+}
+/* several Claude Code gates render their options WITHOUT numbers (the
+   workspace-trust dialog, hideIndex menus) : ❯ Label with sibling rows
+   aligned under it, closed by a keybinding hint. Numbers are synthesized
+   in on-screen order and clicking sends arrow navigation + Enter, since
+   digit keys are not guaranteed to select on an unnumbered menu. */
+function detectUnnumbered(lines){
+  if(!lines) return null;
+  const hintRe = /(^|\s)(esc\b|enter to|to (confirm|cancel|select|amend|continue)|tab to|[↑↓]\/?[↑↓]?)/i;
+  const cursorRe = /^[│|]?\s*[❯▸]\s*(\S.*?)\s*$/;
+  for(let i = lines.length-1; i >= 0; i--){
+    const m = lines[i].match(cursorRe);
+    if(!m) continue;
+    if(/^\d[.)]/.test(m[1])) continue;              /* numbered row : other branch */
+    if(isBorderRow(lines[i])) continue;
+    const options = [{num:1, label: cleanPane(m[1]).slice(0,120), row:i}];
+    let j = i+1;
+    for(; j < lines.length && options.length < 6; j++){
+      const l = lines[j];
+      if(!l.trim() || isBorderRow(l)) break;
+      if(hintRe.test(l)) break;                      /* keybinding hint closes the menu */
+      const fm = l.match(/^(\s*)[│|]?\s*(\S.*?)\s*$/);
+      if(!fm) break;
+      if(/^\d[.)]/.test(fm[2])) break;               /* a numbered option row : other branch */
+      options.push({num: options.length+1, label: cleanPane(fm[2]).slice(0,120), row:j});
+    }
+    if(options.length < 2) continue;
+    /* anti-false-positive : a real menu announces its keys just below the
+       block ("Enter to confirm · Esc to cancel") */
+    let hinted = false;
+    for(let k = j; k < Math.min(lines.length, j+3); k++){
+      if(lines[k].trim() && hintRe.test(lines[k])){ hinted = true; break; }
+    }
+    if(!hinted) continue;
+    const question = questionAbove(lines, i);
+    if(!question) continue;
+    options.forEach(o=>{ o.delta = o.row - i; delete o.row; });
+    return {question: question.slice(0,200), options, nav: "arrows"};
+  }
+  return null;
 }
 function hideAsk(){
   askStable = null;
@@ -2077,7 +2131,16 @@ function showAsk(det){
   const sendOption = async (o, btn)=>{
     if(btn) btn.disabled = true;
     setSent("RECOGNIZED : OPTION " + o.num + " : " + o.label.toUpperCase(), true);
-    if(!await tmuxSendHex(hexOf(String(o.num)) + " 0d")){
+    /* unnumbered menus have no digit keys to press : walk the menu cursor
+       with arrows (ESC[B down, ESC[A up) and confirm with Enter */
+    let hex;
+    if(typeof o.delta === "number"){
+      const step = o.delta >= 0 ? "1b 5b 42" : "1b 5b 41";
+      hex = Array.from({length: Math.abs(o.delta)}, ()=>step).concat("0d").join(" ");
+    } else {
+      hex = hexOf(String(o.num)) + " 0d";
+    }
+    if(!await tmuxSendHex(hex)){
       setSent("TRANSMISSION FAILED : RETRY", false);
       if(btn) btn.disabled = false;
     }
