@@ -1175,22 +1175,29 @@ function mdToHtml(src){
 }
 
 /* harness plumbing the mirror delivers as user messages : system-reminder
-   context blobs (environment, memory, tool listings) can run tens of KB
-   and background-task notifications arrive as XML blobs : neither is part
-   of the conversation, so the main window skips them */
+   context blobs, task notifications, subagent runtime notices, skill
+   instruction expansions, compaction summaries, cross-session relays :
+   none of these are the operator speaking, so the conversation skips
+   them. Notices are standalone drops; marker blocks are cut so a real
+   directive riding AHEAD of the marker survives (a block that is only
+   the marker yields nothing at all). */
 function isHarnessContext(text){
-  return /^\s*<(system-(reminder|warning)|task-notification)\b/i.test(text || "");
+  return /^\s*<(system-(reminder|warning)|task-notification)\b/i.test(text || "") ||
+         /^\s*\[System: /.test(text || "");
 }
-/* compaction turns : when the harness resumes a continued conversation it
-   re-opens with a full summary prompt; a fresh directive sent in the same
-   turn sits BEFORE the marker, so keep that and drop the summary. A turn
-   that is only the summary (auto-compaction) yields nothing at all. */
-const CONT_MARKER = "This session is being continued from a previous conversation";
-function stripContinuation(text){
+const PLUMBING_MARKERS = [
+  "This session is being continued from a previous conversation",
+  "Base directory for this skill:",
+  "Another Claude session sent a message:"
+];
+function stripPlumbing(text){
   const t = text || "";
-  const i = t.indexOf(CONT_MARKER);
-  if(i < 0) return t;
-  return t.slice(0, i).trim();
+  let cut = t.length;
+  for(const m of PLUMBING_MARKERS){
+    const i = t.indexOf(m);
+    if(i >= 0 && i < cut) cut = i;
+  }
+  return t.slice(0, cut).trim();
 }
 
 function renderTranscript(items){
@@ -1211,7 +1218,7 @@ function renderTranscript(items){
     if(t === "message"){
       const role = i.role;
       const parts = (i.content||[]).map(c => c.text || c.transcript || "").filter(Boolean);
-      const text = stripContinuation(parts.join("\n").trim());
+      const text = stripPlumbing(parts.join("\n").trim());
       if(isHarnessContext(text)) return;
       if(!text) return;
       lastRole = role;
@@ -2336,7 +2343,7 @@ function commandHistory(){
   const arr = [...state.lastItems.values()]
     .filter(i => i.type === "message" && i.role === "user")
     .sort((a,b)=>(a.created_at||0)-(b.created_at||0))
-    .map(i => stripContinuation((i.content||[]).map(c => c.text || "").join("").trim()))
+    .map(i => stripPlumbing((i.content||[]).map(c => c.text || "").join("").trim()))
     .filter(t => t && !isHarnessContext(t));
   if(state.pendingUser && !arr.includes(state.pendingUser)) arr.push(state.pendingUser);
   return arr;
