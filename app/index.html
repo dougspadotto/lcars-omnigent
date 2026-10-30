@@ -1181,6 +1181,17 @@ function mdToHtml(src){
 function isHarnessContext(text){
   return /^\s*<(system-(reminder|warning)|task-notification)\b/i.test(text || "");
 }
+/* compaction turns : when the harness resumes a continued conversation it
+   re-opens with a full summary prompt; a fresh directive sent in the same
+   turn sits BEFORE the marker, so keep that and drop the summary. A turn
+   that is only the summary (auto-compaction) yields nothing at all. */
+const CONT_MARKER = "This session is being continued from a previous conversation";
+function stripContinuation(text){
+  const t = text || "";
+  const i = t.indexOf(CONT_MARKER);
+  if(i < 0) return t;
+  return t.slice(0, i).trim();
+}
 
 function renderTranscript(items){
   /* the main screen is the conversation only : the working stream
@@ -1200,7 +1211,7 @@ function renderTranscript(items){
     if(t === "message"){
       const role = i.role;
       const parts = (i.content||[]).map(c => c.text || c.transcript || "").filter(Boolean);
-      const text = parts.join("\n").trim();
+      const text = stripContinuation(parts.join("\n").trim());
       if(isHarnessContext(text)) return;
       if(!text) return;
       lastRole = role;
@@ -2325,7 +2336,7 @@ function commandHistory(){
   const arr = [...state.lastItems.values()]
     .filter(i => i.type === "message" && i.role === "user")
     .sort((a,b)=>(a.created_at||0)-(b.created_at||0))
-    .map(i => (i.content||[]).map(c => c.text || "").join("").trim())
+    .map(i => stripContinuation((i.content||[]).map(c => c.text || "").join("").trim()))
     .filter(t => t && !isHarnessContext(t));
   if(state.pendingUser && !arr.includes(state.pendingUser)) arr.push(state.pendingUser);
   return arr;
