@@ -55,10 +55,25 @@ def build_stamp():
     return {"page": int(newest), "self": int(os.path.getmtime(os.path.abspath(__file__)))}
 
 
+# The bridge is often launched by the native app with launchd's minimal
+# PATH (/usr/bin:/bin:/usr/sbin:/sbin), where shutil.which("tmux") finds
+# nothing : every send then fails and geometry silently falls back to a
+# wrong grid, garbling the pane picture and blinding prompt detection.
+# Probe the common install locations directly instead.
+def find_tmux():
+    found = shutil.which("tmux")
+    if found:
+        return found
+    for cand in ("/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"):
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
+    return None
+
+
 def tmux_geometry(socket_path, target):
     if not TMUX_SOCKET_RE.search(socket_path) or not os.path.exists(socket_path):
         return None
-    tmux = shutil.which("tmux")
+    tmux = find_tmux()
     if not tmux:
         return None
     try:
@@ -83,7 +98,7 @@ HEX_RE = re.compile(r"^(?:[0-9a-fA-F]{2})(?:\s+[0-9a-fA-F]{2}){0,95}$")
 def tmux_send(socket_path, target, hex_str):
     if not TMUX_SOCKET_RE.search(socket_path) or not os.path.exists(socket_path):
         return False
-    tmux = shutil.which("tmux")
+    tmux = find_tmux()
     if not tmux or not target or not HEX_RE.match(hex_str or ""):
         return False
     try:
