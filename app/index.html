@@ -180,6 +180,10 @@ body{
 .workstatus .wsglyph{color:var(--tangerine);font-weight:700;animation:blink 1s steps(1) infinite}
 .workstatus .wsverb{color:var(--tangerine);font-weight:700;letter-spacing:.08em;font-family:var(--font);font-size:12px}
 .workstatus .wstiming{color:#6f77a0}
+/* in-transcript processing card : when the user's message is the last thing
+   on screen and the agent is running, the tail must not read as dead air */
+.procbody{font-family:var(--mono);font-size:12px;color:#c9d6f2}
+.procbody .procglyph{color:var(--tangerine);font-weight:700;animation:blink 1s steps(1) infinite}
 .sessItem{
   background:#0d1120;color:#cfd6ee;font-family:var(--font);font-weight:500;font-size:13px;
   text-align:left;padding:5px 10px 3px;border-radius:10px;border:none;cursor:pointer;
@@ -1084,6 +1088,7 @@ function statusLine(s, prefix){
 }
 function setConStatus(s){
   $id("conStatus").textContent = statusLine(s);
+  updateProcCard();
 }
 async function pollTranscript(){
   state.lastPollAt = Date.now();
@@ -1171,9 +1176,10 @@ function mdToHtml(src){
 
 /* harness plumbing the mirror delivers as user messages : system-reminder
    context blobs (environment, memory, tool listings) can run tens of KB
-   and are not part of the conversation, so the main window skips them */
+   and background-task notifications arrive as XML blobs : neither is part
+   of the conversation, so the main window skips them */
 function isHarnessContext(text){
-  return /^\s*<system-(reminder|warning)>/i.test(text || "");
+  return /^\s*<(system-(reminder|warning)|task-notification)\b/i.test(text || "");
 }
 
 function renderTranscript(items){
@@ -1188,6 +1194,7 @@ function renderTranscript(items){
   state.forceScroll = false;
   box.innerHTML = "";
   let last = null;
+  let lastRole = null;
   items.forEach(i => {
     const t = i.type;
     if(t === "message"){
@@ -1196,6 +1203,7 @@ function renderTranscript(items){
       const text = parts.join("\n").trim();
       if(isHarnessContext(text)) return;
       if(!text) return;
+      lastRole = role;
       const div = document.createElement("div");
       div.className = "msg";
       if(role === "user"){
@@ -1257,10 +1265,35 @@ function renderTranscript(items){
       div.innerHTML = `<div class="who user">USER</div><div class="body"></div>`;
       div.querySelector(".body").textContent = state.pendingUser;
       box.appendChild(div);
+      lastRole = "user";
     }
   }
+  state.lastRenderedRole = lastRole;
+  updateProcCard();
   if(askStable && askCardEl) box.appendChild(askCardEl);
   if(stick){ box.scrollTop = box.scrollHeight; state.userAtBottom = true; }
+}
+
+/* the tail of the conversation must never read as dead air : while the
+   bound session is running and the last visible message is the user's
+   (a directive awaiting a reply, a bash command awaiting the harness),
+   a pulsing card marks the wait : it yields to the LIVE OUTPUT spinner
+   strip once working output reaches the pane */
+function updateProcCard(){
+  const box = $id("msgs");
+  let card = $id("procCard");
+  const s = state.sessions.find(x=>x.id===state.current);
+  const stripBusy = $id("workStatus") && $id("workStatus").style.display !== "none";
+  const show = !!(s && s.status === "running" && state.lastRenderedRole === "user" && !stripBusy);
+  if(show && !card){
+    card = document.createElement("div");
+    card.id = "procCard";
+    card.className = "msg";
+    card.innerHTML = `<div class="who assistant">OMNIGENT</div><div class="body procbody"><span class="procglyph">✶</span> PROCESSING&#8230;</div>`;
+    box.appendChild(card);
+  } else if(!show && card && card.parentNode === box){
+    card.remove();
+  }
 }
 
 /* pin the transcript to the tail after any layout change, unless the user
@@ -1775,6 +1808,7 @@ function updateWorkStatus(){
     el.style.display = "none";
     el.innerHTML = "";
   }
+  updateProcCard();
 }
 function feedWrite(data){
   if(!feedTerm) return;
