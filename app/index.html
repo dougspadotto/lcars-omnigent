@@ -2327,7 +2327,7 @@ function renderBudget(b){
   const el = $id("budget");
   if(!b || !b.available){ el.textContent = "AI —"; el.title = "ISAAC BUDGET UNAVAILABLE"; return; }
   let t = `AI $${b.spent}/$${b.limit}` + (b.percent != null ? ` (${b.percent}%)` : "");
-  if(b.guard != null) t += ` · D $${b.guard}`;
+  if(b.guard != null) t += ` · Daily $${b.guard}`;
   el.textContent = t;
   el.title = `ISAAC BUDGET : SPENT $${b.spent} OF $${b.limit} : REMAINING $${b.remaining}` +
     (b.percent != null ? ` : USED ${b.percent}%` : "") +
