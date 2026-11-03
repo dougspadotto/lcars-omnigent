@@ -16,6 +16,7 @@ import shutil
 import socket
 import subprocess
 import threading
+import time
 import urllib.error
 import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -68,6 +69,73 @@ def find_tmux():
         if os.path.isfile(cand) and os.access(cand, os.X_OK):
             return cand
     return None
+
+
+# Isaac budget readout for the header : same parse as the SwiftBar plugin,
+# against `isaac usage` run through a login shell (isaac is an alias here).
+# The command can take seconds, so results are cached for 5 minutes and the
+# first caller gets whatever the last snapshot produced.
+BUDGET_TTL_S = 300
+_budget_lock = threading.Lock()
+_budget_cache = {"at": 0.0, "data": None}
+
+
+def budget_snapshot():
+    with _budget_lock:
+        now = time.time()
+        if now - _budget_cache["at"] < BUDGET_TTL_S:
+            return _budget_cache["data"]
+    data = _parse_isaac_usage()
+    with _budget_lock:
+        _budget_cache["at"] = time.time()
+        _budget_cache["data"] = data
+    return data
+
+
+def _parse_isaac_usage():
+    empty = {"available": False}
+    try:
+        # isaac usage writes its report on stderr : merge the streams the
+        # same way the SwiftBar plugin's 2>&1 does
+        out = subprocess.run(
+            ["/bin/zsh", "-lic", "isaac usage"],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, timeout=45,
+        ).stdout
+    except Exception:
+        return empty
+    esc = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+    lines = [esc.sub("", ln) for ln in out.replace("\r", "").splitlines()]
+
+    def amounts_in(text):
+        return [a for a in re.findall(r"\$([0-9][0-9,.]*)", text or "")]
+
+    monthly = next((ln for ln in lines if "monthly" in ln.lower()
+                    and amounts_in(ln)), None)
+    if not monthly:
+        monthly = next((ln for ln in lines if "spent" in ln.lower()
+                        and amounts_in(ln)), None)
+    vals = amounts_in(monthly)
+    if len(vals) < 2:
+        return empty
+    spent = vals[0].replace(",", "")
+    limit = vals[1].replace(",", "")
+    try:
+        remaining = max(0, round(float(limit) - float(spent)))
+    except ValueError:
+        return empty
+    pct = re.search(r"([0-9]+)% used", out)
+    guard = next((ln for ln in lines if "daily spend guard left" in ln.lower()), "")
+    gvals = amounts_in(guard)
+    return {
+        "available": True,
+        "spent": spent,
+        "limit": limit,
+        "remaining": remaining,
+        "percent": int(pct.group(1)) if pct else None,
+        "guard": gvals[0].replace(",", "") if gvals else None,
+        "checked": int(time.time()),
+    }
 
 
 def tmux_geometry(socket_path, target):
@@ -247,6 +315,13 @@ class BridgeHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/api/build-stamp":
             body = json.dumps(build_stamp()).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path == "/api/budget":
+            body = json.dumps(budget_snapshot()).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))

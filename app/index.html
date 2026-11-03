@@ -97,6 +97,7 @@ body{
   font-weight:700;font-size:20px;letter-spacing:.06em;
   border-radius:16px;padding:4px 16px;white-space:nowrap;flex:0 0 auto;
 }
+.header .sd.budget{color:var(--tangerine);font-size:15px}
 .header .sub{font-size:13px;font-weight:500;opacity:.75;white-space:nowrap;flex:0 0 auto}
 .newbtn{
   background:var(--tangerine);color:#000;border:none;border-radius:16px;
@@ -544,6 +545,7 @@ details.exec .targ{
     <span class="spacer"></span>
     <button class="newbtn" id="newBtn">NEW SESSION</button>
     <span class="sub" id="hdrSub">CONNECTING&#8230;</span>
+    <span class="sd budget" id="budget" title="ISAAC BUDGET : MONTHLY SPENT/LIMIT (PERCENT) AND DAILY GUARD LEFT">AI &#8212;</span>
     <span class="sd" id="stardate">STARDATE &#8212;&#8212;</span>
   </div>
 
@@ -2317,6 +2319,28 @@ function tick(){
   $id("clock").innerHTML = pad(now.getHours())+":"+pad(now.getMinutes())+":"+pad(now.getSeconds());
 }
 tick(); setInterval(tick,1000);
+
+/* ---------- isaac budget readout ---------- */
+/* the bridge parses `isaac usage` (cached 5 min server side) : monthly
+   spent/limit with percent, plus the daily spend guard still left */
+function renderBudget(b){
+  const el = $id("budget");
+  if(!b || !b.available){ el.textContent = "AI —"; el.title = "ISAAC BUDGET UNAVAILABLE"; return; }
+  let t = `AI $${b.spent}/$${b.limit}` + (b.percent != null ? ` (${b.percent}%)` : "");
+  if(b.guard != null) t += ` · D $${b.guard}`;
+  el.textContent = t;
+  el.title = `ISAAC BUDGET : SPENT $${b.spent} OF $${b.limit} : REMAINING $${b.remaining}` +
+    (b.percent != null ? ` : USED ${b.percent}%` : "") +
+    (b.guard != null ? ` : DAILY GUARD $${b.guard} LEFT` : "") +
+    ` : CHECKED ${new Date(b.checked*1000).toTimeString().slice(0,5)}`;
+}
+async function pollBudget(){
+  try{
+    const r = await fetch("/api/budget");
+    renderBudget(await r.json());
+  }catch(e){ renderBudget(null); }
+}
+pollBudget(); setInterval(pollBudget, 300000);
 
 /* ---------- audio toggle ---------- */
 /* ---------- audio toggle (preference persisted) ---------- */
