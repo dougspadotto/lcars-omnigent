@@ -1834,17 +1834,15 @@ function feedWrite(data){
   /* any pane output stamps activity : the prompt scanner uses the silence
      after it, since a working harness repaints its spinner constantly */
   state.feedLastWriteAt = Date.now();
-  const box = $id("livefeed");
-  const opened = !box.open;
-  if(opened) box.open = true;
-  /* the grid is the pane's full height, taller than the panel : follow the
-     live tail unless the user scrolled up to inspect older rows */
-  const host = $id("livefeedText");
-  if(host.scrollHeight - host.scrollTop - host.clientHeight < 48){
-    host.scrollTop = host.scrollHeight;
+  /* the panel only opens on a click : writes keep filling it while closed */
+  if($id("livefeed").open){
+    /* the grid is the pane's full height, taller than the panel : follow the
+       live tail unless the user scrolled up to inspect older rows */
+    const host = $id("livefeedText");
+    if(host.scrollHeight - host.scrollTop - host.clientHeight < 48){
+      host.scrollTop = host.scrollHeight;
+    }
   }
-  /* the panel opening shrinks the transcript : re-pin it to the tail */
-  if(opened) pinMsgs();
   updateWorkStatus();
 }
 async function fetchGeometry(meta){
@@ -1942,9 +1940,9 @@ $id("livefeed").addEventListener("toggle", ()=>{
     const s = state.sessions.find(x=>x.id===state.current);
     if(s && s.status === "running") startTermFeed(state.current);
     else feedState("IDLE");
-  } else if(state.termWs){
-    stopTermFeed(); feedState("DETACHED");
   }
+  /* a closed panel no longer detaches : the hidden buffer keeps filling so
+     input-request scanning (the approval cards) never goes dark */
 });
 
 /* ---------- turn view : click an Omnigent message to reopen its working stream ---------- */
@@ -2252,6 +2250,13 @@ function showAsk(det){
   row.appendChild(dis);
   body.appendChild(row);
   body.appendChild(status);
+  /* input requests are the one thing that opens the live view on their own :
+     the operator needs the pane context to judge the prompt */
+  const live = $id("livefeed");
+  if(!live.open){
+    live.open = true;
+    pinMsgs();
+  }
   const box = $id("msgs");
   if(askCardEl.parentNode !== box) box.appendChild(askCardEl);
   box.scrollTop = box.scrollHeight;
