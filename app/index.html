@@ -1041,6 +1041,9 @@ function stopLive(){
   if(state.pollTimer){ clearInterval(state.pollTimer); state.pollTimer = null; }
   if(state.pollRetry){ clearTimeout(state.pollRetry); state.pollRetry = null; }
   if(state.es){ state.es.close(); state.es = null; }
+  /* approvals belong to the session being left : the next bind re-renders
+     only what its own stream publishes */
+  clearElicitations();
   stopTermFeed();
 }
 
@@ -1291,6 +1294,8 @@ function renderTranscript(items){
   state.lastRenderedRole = lastRole;
   updateProcCard();
   if(askStable && askCardEl) box.appendChild(askCardEl);
+  /* the transcript rebuild wipes any parked approval card : re-render it */
+  if(pendingElicitations.size) renderElicitationCard();
   if(stick){ box.scrollTop = box.scrollHeight; state.userAtBottom = true; }
 }
 
@@ -1348,6 +1353,20 @@ function startLive(){
         }
       }catch(e){}
     });
+    /* governed tool approvals (PermissionRequest hook) publish here : the
+       TUI menu never renders on these sessions, so this event is the only
+       signal the pane scanner will never see */
+    es.addEventListener("response.elicitation_request", ev=>{
+      if(state.current !== id) return;
+      try{
+        const d = JSON.parse(ev.data);
+        if(d && d.elicitation_id){
+          pendingElicitations.set(d.elicitation_id, d);
+          renderElicitationCard(true);
+          sfx.live();
+        }
+      }catch(e){}
+    });
     es.addEventListener("session.terminal.activity", ()=>{
       lastActivity = Date.now();
       const s = state.sessions.find(x=>x.id===id);
@@ -1366,6 +1385,8 @@ function startLive(){
         if(d.status === "running"){ startTermFeed(id); }
         else {
           stopTermFeed();
+          /* the turn ended : nothing is parked on an approval anymore */
+          clearElicitations();
           /* an open turn view survives the turn ending : it is history */
           if(!turnView){ feedCollapse(); feedState((d.status||"idle").toUpperCase()); }
           else feedState("TURN VIEW");
@@ -1780,7 +1801,7 @@ document.querySelector(".elbow-logo").addEventListener("click", toggleRail);
 /* Live output is a main-session-only feature : sub-agent sessions never
    attach, and the pane follows the turn (attach while running, detach and
    collapse when it ends) so it never lingers over the transcript. */
-let feedTerm = null, feedGeom = null;
+let feedTerm = null, feedGeom = null, feedRetryTimer = null;
 function isSubagentSession(s){
   return /-subagent$/.test((s && s.labels && s.labels["omnigent.wrapper"]) || "");
 }
@@ -1792,6 +1813,7 @@ function stopTermFeed(){
     state.termWs = null;
   }
   if(askScanTimer){ clearInterval(askScanTimer); askScanTimer = null; }
+  if(feedRetryTimer){ clearTimeout(feedRetryTimer); feedRetryTimer = null; }
   if(feedTerm){ try{ feedTerm.dispose(); }catch(e){} feedTerm = null; }
   state.feedMeta = null;
   state.askSig = null; state.askStreak = 0;
@@ -1860,14 +1882,37 @@ async function startTermFeed(id, force){
   const s = state.sessions.find(x=>x.id===id);
   if(!s) return;
   if(isSubagentSession(s)){ feedCollapse(); feedState("MAIN SESSION ONLY"); return; }
-  if(!force && s.status !== "running"){ feedCollapse(); feedState("IDLE"); return; }
+  if(!force && s.status !== "running"){
+    feedCollapse(); feedState("IDLE");
+    /* the running flip usually arrives over the event stream : one delayed
+       re-check keeps a just-dispatched session attached even if that stream
+       dropped */
+    if(feedRetryTimer) clearTimeout(feedRetryTimer);
+    feedRetryTimer = setTimeout(()=>{ feedRetryTimer=null;
+      const cur = state.sessions.find(x=>x.id===id);
+      if(state.current===id && cur && cur.status==="running") startTermFeed(id);
+    }, 3000);
+    return;
+  }
   feedState("CONNECTING…");
   const host = $id("livefeedText");
+  const retryFeed = ()=>{
+    if(feedRetryTimer) clearTimeout(feedRetryTimer);
+    feedRetryTimer = setTimeout(()=>{ feedRetryTimer=null;
+      if(state.current===id) startTermFeed(id, force);
+    }, 1500);
+  };
   api(`/sessions/${id}/resources/terminals`).then(async d=>{
     if(state.current !== id) return;
     const terms = d.data || d.terminals || [];
     const t = terms.find(x => (x.metadata||{}).session_key === "main" || /:main$/.test(x.name||""));
-    if(!t){ feedState("NO MAIN TERMINAL"); return; }
+    if(!t){
+      /* the runner registers the terminal a beat after the running flip : on
+         a brand-new session the first-turn authorization dialog would render
+         into a pane nobody is watching without this retry */
+      feedState("NO MAIN TERMINAL : RETRYING");
+      retryFeed(); return;
+    }
     const meta = t.metadata || {};
     const tid = t.resource_id || t.id || (t.resource && t.resource.id);
     state.feedMeta = meta;
@@ -1929,7 +1974,7 @@ async function startTermFeed(id, force){
     };
     ws.onclose = ()=>{ feedState("DETACHED"); if(state.current===id) setTimeout(()=>{ if(state.current===id && !turnView) startTermFeed(id); }, 4000); };
     ws.onerror = ()=>feedState("ERROR");
-  }).catch(()=>feedState("NO TERMINAL"));
+  }).catch(()=>{ feedState("NO TERMINAL : RETRYING"); retryFeed(); });
 }
 $id("livefeed").addEventListener("toggle", ()=>{
   pinMsgs();
@@ -2296,6 +2341,146 @@ function scanAsk(){
     state.askDismissedSig = null;
     if(askStable !== null) hideAsk();
   }
+}
+
+/* ---------- governed approvals : server-published elicitations ----------
+   On governed sessions the PermissionRequest hook parks on the Omnigent
+   server and the numbered TUI menu never renders : the approval arrives
+   only as a response.elicitation_request stream event. The pane scanner
+   cannot see it, so this card answers it over the REST resolve endpoint
+   instead of keystrokes. */
+
+const pendingElicitations = new Map();
+let elicitationCardEl = null;
+
+function clearElicitations(){
+  pendingElicitations.clear();
+  if(elicitationCardEl && elicitationCardEl.parentNode) elicitationCardEl.parentNode.removeChild(elicitationCardEl);
+}
+
+function elicitButtons(p){
+  const btns = [{label:"ALLOW", body:{action:"accept"}, tone:"#1a3824"}];
+  if(p.allow_auto_mode) btns.push({label:"ALLOW : AUTO MODE", body:{action:"accept", content:{allow_auto_mode:true}}, tone:"#1a2438"});
+  if(p.allow_all_edits) btns.push({label:"ACCEPT EDITS : SESSION", body:{action:"accept", content:{allow_all_edits:true}}, tone:"#1a2438"});
+  if(p.remember_scope) btns.push({label:"DON'T ASK AGAIN", body:{action:"accept", content:{remember:true}}, tone:"#1a2438"});
+  btns.push({label:"DENY", body:{action:"decline"}, tone:"#381a1a"});
+  return btns;
+}
+
+function renderElicitationCard(openLive){
+  const box = $id("msgs");
+  if(!box) return;
+  const first = pendingElicitations.entries().next();
+  if(first.done){
+    if(elicitationCardEl && elicitationCardEl.parentNode) elicitationCardEl.parentNode.removeChild(elicitationCardEl);
+    return;
+  }
+  const [eid, ev] = first.value;
+  const p = ev.params || {};
+  if(!elicitationCardEl){
+    elicitationCardEl = document.createElement("div");
+    elicitationCardEl.className = "msg";
+    elicitationCardEl.id = "elicitCard";
+  }
+  elicitationCardEl.innerHTML = `<div class="who system">APPROVAL REQUIRED</div><div class="body" style="font-family:var(--font);white-space:normal"></div>`;
+  const body = elicitationCardEl.querySelector(".body");
+  const q = document.createElement("div");
+  q.textContent = (p.message || "APPROVAL REQUESTED").replace(/\*\*/g,"").toUpperCase();
+  q.style.cssText = "color:#ffd59a;font-weight:700;margin-bottom:6px";
+  body.appendChild(q);
+  if(p.content_preview){
+    const pre = document.createElement("div");
+    pre.textContent = p.content_preview;
+    pre.style.cssText = "font-family:var(--mono);font-size:11px;color:#a8b8d8;background:#000;border:1px solid #2a3a55;border-radius:6px;padding:6px 8px;margin-bottom:6px;word-break:break-all;max-height:120px;overflow:auto";
+    body.appendChild(pre);
+  }
+  const status = document.createElement("div");
+  status.style.cssText = "margin:6px 0 0;color:#7fe0a0;font-weight:700;font-size:11px;letter-spacing:.08em;display:none";
+  const setSent = (t, ok)=>{
+    status.textContent = t;
+    status.style.color = ok ? "#7fe0a0" : "var(--coral)";
+    status.style.display = "block";
+  };
+  const more = pendingElicitations.size > 1;
+  if(more){
+    const m = document.createElement("div");
+    m.textContent = "+" + (pendingElicitations.size - 1) + " MORE APPROVAL(S) QUEUED";
+    m.style.cssText = "color:#7f9ac0;font-size:10px;letter-spacing:.08em;margin-bottom:4px";
+    body.appendChild(m);
+  }
+  const answer = async (content, btn, label)=>{
+    btn.disabled = true;
+    setSent("SENDING VERDICT : " + label, true);
+    try{
+      await api(`/sessions/${state.current}/elicitations/${encodeURIComponent(eid)}/resolve`, {
+        method:"POST", body: JSON.stringify({action:"accept", content}),
+      });
+      setSent("VERDICT SENT : " + label, true);
+      pendingElicitations.delete(eid);
+      setTimeout(renderElicitationCard, 600);
+    }catch(e){
+      setSent("VERDICT FAILED : " + e.message + " : RETRY", false);
+      btn.disabled = false;
+    }
+  };
+  /* AskUserQuestion prompts ride the full questions + options structure :
+     option buttons answer them directly, keyed by the question header the
+     same way Claude's own picker fills tool_input.answers */
+  const ask = p.ask_user_question;
+  if(ask && Array.isArray(ask.questions) && ask.questions.length){
+    ask.questions.forEach(q=>{
+      const qt = document.createElement("div");
+      qt.textContent = (q.header ? q.header + " : " : "") + q.question;
+      qt.style.cssText = "color:#c8d4f0;font-weight:700;font-size:12px;margin:6px 0 3px";
+      body.appendChild(qt);
+      (q.options||[]).forEach(o=>{
+        const btn = document.createElement("button");
+        btn.style.cssText = "display:block;width:100%;text-align:left;margin:3px 0;padding:6px 12px;font-size:12px;background:#1a2438;color:#c8d4f0;border:1px solid #2a3a55;border-radius:8px;cursor:pointer;font-family:var(--font);letter-spacing:.04em";
+        btn.textContent = o.label + (o.description ? " : " + o.description : "");
+        btn.addEventListener("click", ()=>answer({[q.header || q.question || "answer"]: o.label}, btn, o.label.toUpperCase()));
+        body.appendChild(btn);
+      });
+    });
+  }
+  elicitButtons(p).forEach(b=>{
+    const btn = document.createElement("button");
+    btn.style.cssText = "display:block;width:100%;text-align:left;margin:3px 0;padding:6px 12px;font-size:12px;background:" + b.tone + ";color:#c8d4f0;border:1px solid #2a3a55;border-radius:8px;cursor:pointer;font-family:var(--font);letter-spacing:.04em";
+    btn.textContent = b.label;
+    btn.addEventListener("click", async ()=>{
+      btn.disabled = true;
+      setSent("SENDING VERDICT : " + b.label, true);
+      try{
+        await api(`/sessions/${state.current}/elicitations/${encodeURIComponent(eid)}/resolve`, {
+          method:"POST", body: JSON.stringify(b.body),
+        });
+        setSent("VERDICT SENT : " + b.label, true);
+        pendingElicitations.delete(eid);
+        setTimeout(renderElicitationCard, 600);
+      }catch(e){
+        setSent("VERDICT FAILED : " + e.message + " : RETRY", false);
+        btn.disabled = false;
+      }
+    });
+    body.appendChild(btn);
+  });
+  const dis = document.createElement("button");
+  dis.textContent = "HIDE";
+  dis.title = "HIDE THIS CARD : the request stays parked until answered here or in the omnigent app";
+  dis.style.cssText = "margin:6px 0 0;padding:4px 12px;font-size:11px;background:#2a1a08;color:var(--tangerine);border:1px solid #4a3418;border-radius:8px;cursor:pointer;font-family:var(--font);font-weight:700;letter-spacing:.08em";
+  dis.addEventListener("click", ()=>{
+    if(elicitationCardEl && elicitationCardEl.parentNode) elicitationCardEl.parentNode.removeChild(elicitationCardEl);
+  });
+  body.appendChild(dis);
+  body.appendChild(status);
+  if(openLive){
+    const live = $id("livefeed");
+    if(!live.open){
+      live.open = true;
+      pinMsgs();
+    }
+  }
+  if(elicitationCardEl.parentNode !== box) box.appendChild(elicitationCardEl);
+  box.scrollTop = box.scrollHeight;
 }
 
 /* ---------- clocks ---------- */
