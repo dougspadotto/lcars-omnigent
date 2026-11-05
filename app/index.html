@@ -462,15 +462,24 @@ details.exec .targ{
 .mbody{display:flex;gap:12px;padding:14px 16px;overflow:auto}
 .mcol{flex:1;border:2px solid #2e3350;border-radius:14px;padding:8px;min-width:0;display:flex;flex-direction:column;gap:4px}
 .mcol .mlist{display:flex;flex-direction:column;gap:4px;max-height:300px;overflow-y:auto}
-.pickb{
-  flex:0 0 auto;
+.lcsel{
   font-family:var(--font);font-weight:700;font-size:13.5px;color:var(--black);
-  border:none;border-radius:13px;padding:6px 10px 4px;cursor:pointer;text-align:left;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;
+  background:var(--periwinkle);border:none;border-radius:13px;padding:7px 10px 5px;
+  cursor:pointer;width:100%;outline:none;text-transform:uppercase;
 }
-.pickb:hover{filter:brightness(1.2)}
-.pickb.sel{outline:3px solid #fff;outline-offset:-3px}
-.pickb .pd{display:block;font-size:11px;font-weight:500;opacity:.7;letter-spacing:.08em}
+.lcsel:hover{filter:brightness(1.15)}
+.lcsel:focus{outline:3px solid #fff;outline-offset:-3px}
+.lcsel option,.lcsel optgroup{background:#0a0e18;color:#fff;font-family:var(--mono);font-size:12.5px;font-weight:500;text-transform:none}
+.lcsel option.opt-route{color:var(--tangerine);font-weight:700}
+.lctext{
+  background:#0a0e18;border:2px solid var(--iceblue);border-radius:12px;color:#fff;
+  font-family:var(--mono);font-size:12.5px;line-height:1.45;padding:6px 10px;width:100%;
+  box-sizing:border-box;resize:vertical;outline:none;
+}
+.lctext::placeholder{color:#5a6478}
+.lctext:focus{border-color:var(--tangerine)}
+.routesub{margin-top:8px;border-top:2px solid #2e3350;padding-top:2px;display:flex;flex-direction:column;gap:4px}
+.routesub .flabel{margin:4px 0 0}
 .mfoot{display:flex;align-items:center;gap:10px;padding:10px 16px 14px;border-top:2px solid #333}
 .mfoot input{
   background:#0a0e18;border:2px solid var(--iceblue);border-radius:12px;color:#fff;
@@ -678,15 +687,21 @@ details.exec .targ{
     <div class="mbody">
       <div class="mcol">
         <div class="flabel">AGENT</div>
-        <div class="mlist" id="pickAgents"></div>
+        <select id="pickAgents" class="lcsel"></select>
       </div>
       <div class="mcol">
         <div class="flabel">MODEL</div>
-        <div class="mlist" id="pickModels"></div>
+        <select id="pickModels" class="lcsel"></select>
+        <div id="pickRoute" class="routesub" hidden>
+          <div class="flabel">HARNESS : WHO DECIDES</div>
+          <select id="pickRouteHarness" class="lcsel"></select>
+          <div class="flabel">ROUTING PROMPT : OPTIONAL</div>
+          <textarea id="pickRouteMsg" class="lctext" rows="3" placeholder="FIRST MESSAGE THE ROUTER READS : LEAVE BLANK AND THE MODEL IS PICKED IN SESSION"></textarea>
+        </div>
       </div>
       <div class="mcol">
         <div class="flabel">REASONING EFFORT</div>
-        <div class="mlist" id="pickEffort"></div>
+        <select id="pickEffort" class="lcsel"></select>
       </div>
     </div>
     <div class="mfoot">
@@ -718,6 +733,7 @@ const state = {
   host: null,
   hostId: null,
   models: [],        // catalog for current picker harness
+  smartRouting: null, // null = not probed yet : /v1/info answers once
   current: null,     // bound session id for console
   regMode: false,
   regSel: "scheduled",
@@ -1664,15 +1680,21 @@ async function renderStatus(){
 }
 
 /* ---------- new session picker ---------- */
-const PICK_EFFORT = [
-  {label:"harness default", desc:"NO OVERRIDE", color:"var(--blue)"},
-  {label:"low", desc:"FAST ITERATION", color:"var(--blue)"},
-  {label:"medium", desc:"BALANCED", color:"var(--blue)"},
-  {label:"high", desc:"DEEP REASONING", color:"var(--blue)"},
-  {label:"xhigh", desc:"MAXIMUM DEPTH", color:"var(--blue)"},
-  {label:"max", desc:"NO CEILING", color:"var(--blue)"},
+const ROUTE_MODEL = "__route__";
+const ROUTE_HARNESSES = [
+  ["auto", "AUTO : ROUTER PICKS HARNESS AND MODEL"],
+  ["claude-native", "CLAUDE"],
+  ["codex-native", "CODEX"],
 ];
-let selAgent = null, selModel = null, selEffort = "harness default";
+const PICK_EFFORT = [
+  {label:"harness default", desc:"NO OVERRIDE"},
+  {label:"low", desc:"FAST ITERATION"},
+  {label:"medium", desc:"BALANCED"},
+  {label:"high", desc:"DEEP REASONING"},
+  {label:"xhigh", desc:"MAXIMUM DEPTH"},
+  {label:"max", desc:"NO CEILING"},
+];
+let selAgent = null, selModel = "", selEffort = "harness default", selRouteHarness = "auto";
 /* the runner rejects relative workspaces : default to an absolute path
    lifted from an existing session's composer context, and expand ~ on send */
 function detectHome(){
@@ -1693,58 +1715,75 @@ function expandWorkspace(ws){
   return ws;
 }
 
-function buildPick(id, items, getLabel, setLabel){
-  const box = $id(id);
-  box.innerHTML = "";
-  items.forEach(it=>{
-    const b = document.createElement("button");
-    b.className = "pickb" + (getLabel()===it.label ? " sel" : "");
-    b.style.background = it.color || "var(--periwinkle)";
-    b.innerHTML = (it.desc ? `<span class="pd">${esc(it.desc)}</span>` : "") + esc(it.label);
-    b.addEventListener("click", async ()=>{
-      setLabel(it.label);
-      sfx.select();
-      if(id === "pickAgents"){
-        await loadPickerModels();
-      }
-      sfx.select();
-      buildPick(id, items, getLabel, setLabel);
-    });
-    box.appendChild(b);
+function fillSelect(id, opts, value, onpick){
+  const el = $id(id);
+  el.innerHTML = "";
+  opts.forEach(o=>{
+    const op = document.createElement("option");
+    op.value = o.value;
+    op.textContent = o.text;
+    if(o.cls) op.className = o.cls;
+    el.appendChild(op);
   });
+  el.value = value;
+  el.onchange = ()=>{ sfx.select(); onpick(el.value); };
 }
-
+function modelText(m){
+  const name = (m.displayName && m.displayName !== m.id) ? m.displayName.toUpperCase() : "";
+  const short = String(m.id).replace(/^system\.ai\./,"");
+  return name ? name + " : " + short : short;
+}
+function routeSub(){ $id("pickRoute").hidden = selModel !== ROUTE_MODEL; }
+function buildAgentSelect(){
+  const opts = state.agents.map(a=>({
+    value: a.name,
+    text: a.name.toUpperCase() + " : " + (a.builtin?"BUILT-IN":"CUSTOM") + " : " + (a.harness||"") + (a.mcp_servers&&a.mcp_servers.length ? ` : ${a.mcp_servers.length} MCP` : ""),
+  }));
+  if(!opts.length) opts.push({value:"", text:"NO AGENTS"});
+  fillSelect("pickAgents", opts, selAgent, v=>{ selAgent=v; loadPickerModels(); });
+}
 async function loadPickerModels(){
   const a = state.agents.find(x=>x.name===selAgent);
   const harness = (a && a.harness) || "claude-native";
-  selModel = null;
   try{
     const m = await api(`/hosts/${state.hostId}/harnesses/${harness}/model-options`);
     state.models = m.models || [];
   }catch(e){ state.models = []; }
-  const items = state.models.map((m,i)=>({
-    label: m.id,
-    desc: (m.displayName||"") + (i===0 ? " : READY" : ""),
-    color: "var(--periwinkle)",
-  }));
-  if(!items.length) items.push({label:"(harness default)", desc:"NO CATALOG", color:"var(--periwinkle)"});
-  buildPick("pickModels", items, ()=>selModel, v=>selModel=v);
+  const have = new Set(state.models.map(m=>m.id));
+  if(selModel === ROUTE_MODEL && !state.smartRouting) selModel = "";
+  if(selModel && selModel !== ROUTE_MODEL && !have.has(selModel)) selModel = "";
+  const opts = [];
+  if(state.smartRouting) opts.push({value:ROUTE_MODEL, text:"SMART ROUTING : ROUTER PICKS THE MODEL", cls:"opt-route"});
+  opts.push({value:"", text:"HARNESS DEFAULT"});
+  state.models.forEach(m=>opts.push({value:m.id, text:modelText(m)}));
+  if(!state.models.length) opts.push({value:"", text:"HARNESS DEFAULT : NO CATALOG"});
+  fillSelect("pickModels", opts, selModel, v=>{ selModel=v; routeSub(); });
+  routeSub();
 }
 
 async function openPicker(agentPrefill){
   if(!state.agents.length){
     try{ const d = await api("/agents"); state.agents = d.data||[]; }catch(e){}
   }
-  const aItems = state.agents.map(a=>({
-    label: a.name,
-    desc: (a.builtin?"BUILT-IN":"CUSTOM") + " : " + (a.harness||"") + (a.mcp_servers&&a.mcp_servers.length ? ` : ${a.mcp_servers.length} MCP` : ""),
-    color: a.builtin ? "var(--lavender)" : "var(--gold)",
-  }));
-  const native = aItems.find(x => { const a = state.agents.find(y=>y.name===x.label); return a && a.harness === "claude-native"; });
-  selAgent = agentPrefill && agentPrefill.name ? agentPrefill.name : (native ? native.label : (aItems[0] && aItems[0].label));
-  buildPick("pickAgents", aItems, ()=>selAgent, v=>{selAgent=v;});
+  /* Smart Routing availability comes from /v1/info once : a server that
+     omits the sources map degrades to its enabled flag, and an unreadable
+     answer keeps the option hidden rather than launching into a 400 */
+  if(state.smartRouting === null){
+    state.smartRouting = false;
+    try{
+      const info = await api("/info");
+      const src = info && info.smart_routing_sources;
+      state.smartRouting = src ? !!(src.external || src.oss) : info.smart_routing_enabled === true;
+    }catch(e){}
+  }
+  const native = state.agents.find(a=>a.harness === "claude-native");
+  selAgent = agentPrefill && agentPrefill.name ? agentPrefill.name : (native ? native.name : (state.agents[0] && state.agents[0].name));
+  buildAgentSelect();
   await loadPickerModels();
-  buildPick("pickEffort", PICK_EFFORT, ()=>selEffort, v=>selEffort=v);
+  fillSelect("pickEffort",
+    PICK_EFFORT.map(p=>({value:p.label, text:p.label==="harness default" ? "HARNESS DEFAULT" : p.label.toUpperCase() + " : " + p.desc})),
+    selEffort, v=>{ selEffort=v; });
+  fillSelect("pickRouteHarness", ROUTE_HARNESSES.map(([v,t])=>({value:v,text:t})), selRouteHarness, v=>{ selRouteHarness=v; });
   const home = detectHome();
   if(!$id("pickWs").value || $id("pickWs").value === "~/code") $id("pickWs").value = home || "~/code";
   $id("overlay").classList.add("open");
@@ -1763,26 +1802,37 @@ $id("mLaunch").addEventListener("click", async ()=>{
   ws = expandWorkspace(ws);
   const a = state.agents.find(x=>x.name===selAgent);
   if(!a){ closePicker(); return; }
+  const body = {agent_id: a.id};
+  if(selModel === ROUTE_MODEL){
+    /* Smart Routing create : the router picks the model (and the harness
+       when set to auto) from the routing prompt, or in session when the
+       prompt is blank. A pinned model_override would outrank it */
+    body.cost_control_mode_override = "on";
+    body.harness_override = selRouteHarness;
+    const msg = $id("pickRouteMsg").value.trim();
+    if(msg) body.smart_routing_message = msg;
+  }else if(selModel){
+    body.model_override = selModel;
+  }
+  if(selEffort && selEffort !== "harness default") body.reasoning_effort = selEffort;
   $id("mLaunch").textContent = "LAUNCHING…";
   try{
     let created;
     try{
-      created = await api("/sessions", {method:"POST", body: JSON.stringify({agent_id: a.id})});
+      created = await api("/sessions", {method:"POST", body: JSON.stringify(body)});
     }catch(e1){
-      created = await api("/sessions", {method:"POST", body: JSON.stringify({})});
+      created = await api("/sessions", {method:"POST", body: JSON.stringify({agent_id: a.id})});
+      sysLine("LAUNCH DEGRADED : SETTINGS NOT APPLIED : " + e1.message);
     }
     const id = created.id || (created.data && created.data.id) || created.session_id;
-    const patch = {};
-    if(selModel && selModel !== "(harness default)") patch.model_override = selModel;
-    if(selEffort && selEffort !== "harness default") patch.reasoning_effort = selEffort;
-    if(Object.keys(patch).length){
-      try{ await api(`/sessions/${id}`, {method:"PATCH", body: JSON.stringify(patch)}); }catch(e){}
-    }
     let launchNote = "SESSION CREATED";
+    if(selModel === ROUTE_MODEL){
+      launchNote = body.smart_routing_message ? "SESSION CREATED : SMART ROUTING APPLIED" : "SESSION CREATED : SMART ROUTING ARMED";
+    }
     if(state.hostId){
       try{
         await api(`/hosts/${state.hostId}/runners`, {method:"POST", body: JSON.stringify({session_id: id, workspace: ws})});
-        launchNote = "RUNNER LAUNCHED";
+        launchNote = "RUNNER LAUNCHED" + (selModel === ROUTE_MODEL ? " : SMART ROUTING" : "");
       }catch(e){
         launchNote = "RUNNER NOT LAUNCHED : " + e.message;
       }
