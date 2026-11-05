@@ -725,7 +725,6 @@ const state = {
   es: null,
   lastItems: new Map(), // id -> item (current transcript)
   offline: false,
-  foldersInit: false,
   /* sessions held in ACTIVE by the user : they stay there after their
      turns finish and only return to a folder when moved out explicitly */
   activeHold: new Set(JSON.parse(localStorage.getItem("lcars.activeHold") || "[]")),
@@ -868,19 +867,18 @@ async function refreshSessions(){
 }
 
 /* ---------- sessions view : project folders + unfiled ---------- */
-const OPEN_FOLDERS = new Set();
+/* which tree groups are expanded : persisted, so a refresh never
+   re-expands folders the operator collapsed */
+const OPEN_FOLDERS = new Set(JSON.parse(localStorage.getItem("lcars.openFolders") || '["__ACTIVE__"]'));
+function saveOpenFolders(){
+  localStorage.setItem("lcars.openFolders", JSON.stringify([...OPEN_FOLDERS]));
+}
 function statusDot(status){
   const cls = ["running","idle","failed"].includes(status) ? status : "other";
   return `<span class="sdot dot-${cls}"></span>`;
 }
 function renderSessions(){
   const list = $id("folderList");
-  if(!state.foldersInit){
-    state.projects.forEach(p=>OPEN_FOLDERS.add(p.id));
-    OPEN_FOLDERS.add("__UNFILED__");
-    OPEN_FOLDERS.add("__ACTIVE__");
-    state.foldersInit = true;
-  }
   list.innerHTML = "";
   const isPinned = s => !!(s.labels && s.labels["omnigent.pinned"]);
   /* ACTIVE holds running and pinned sessions, plus everything the user
@@ -934,6 +932,7 @@ function renderSessions(){
     head.innerHTML = `<span class="fharrow">${open?"&#9662;":"&#9656;"}</span>${esc(label)} : ${arr.length}`;
     head.addEventListener("click", ()=>{
       open ? OPEN_FOLDERS.delete(key) : OPEN_FOLDERS.add(key);
+      saveOpenFolders();
       renderSessions(); sfx.expand();
     });
     /* drop target : drop a session here to file it, unfile it, or hold it
