@@ -885,7 +885,30 @@ function renderSessions(){
   const isPinned = s => !!(s.labels && s.labels["omnigent.pinned"]);
   /* ACTIVE holds running and pinned sessions, plus everything the user
      worked with and has not moved away : a finished session stays here
-     until an explicit MOVE, never dropped back automatically */
+     until an explicit MOVE, or it goes dormant (2 days without an update)
+     and ages back to its original folder */
+  /* dormancy sweep : a held session untouched for 2 days (and neither
+     running nor pinned) ages back to its original folder, and hold ids
+     whose sessions no longer exist are pruned from the stored set.
+     Skipped while the session list is empty (first boot) so nothing is
+     misread as stale before the first fetch lands */
+  if(state.sessions.length){
+    const DORMANT_S = 2 * 86400;
+    const nowS = Date.now() / 1000;
+    let aged = 0, stale = 0;
+    state.activeHold.forEach(id => {
+      const s = state.sessions.find(x => x.id === id);
+      if(!s){ state.activeHold.delete(id); stale++; return; }
+      if(s.status !== "running" && !isPinned(s) && (s.updated_at || 0) < nowS - DORMANT_S){
+        state.activeHold.delete(id);
+        aged++;
+      }
+    });
+    if(aged || stale){
+      saveActiveHold();
+      if(aged) sysLine("ACTIVE DORMANCY : " + aged + " SESSION(S) OVER 2 DAYS UNTOUCHED MOVED BACK TO THEIR FOLDERS");
+    }
+  }
   const byProject = new Map();
   const unfiled = [];
   const active = [];
