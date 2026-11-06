@@ -308,10 +308,8 @@ body.railhidden #railTab{display:block}
   padding:5px 12px 3px;cursor:pointer;text-align:left;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
-.conmenu .cmi.claude{background:var(--peach)}
-.conmenu .cmi.route{background:var(--tangerine)}
-.conmenu .cmi:hover{filter:brightness(1.2)}
-.conmenu .cmi.sel{outline:3px solid #fff;outline-offset:-3px}
+.conmenu .cmi:hover{filter:brightness(1.15)}
+.conmenu .cmi.sel{background:var(--gold)}
 .conhead{font-size:11px;font-weight:700;letter-spacing:.12em;color:var(--periwinkle);padding:2px 4px 1px}
 .consolehead .sp{flex:1}
 .purgebtn{
@@ -1183,10 +1181,6 @@ function conModelLabel(v){
   const m = models.find(x=>x.id===v);
   return m ? modelText(m) : v;
 }
-function conModelClass(v){
-  if(!v) return conModelRouted ? "route" : "";
-  return /^system\.ai\.claude-/.test(v) ? "claude" : "";
-}
 async function refreshConModel(s){
   const drop = $id("conModelDrop");
   if(!s){ drop.hidden = true; conModelClose(); return; }
@@ -1224,8 +1218,7 @@ async function refreshConModel(s){
     }
     const b = document.createElement("button");
     b.type = "button";
-    const cls = conModelClass(value);
-    b.className = "cmi" + (cls ? " " + cls : "") + (value === cur ? " sel" : "");
+    b.className = "cmi" + (value === cur ? " sel" : "");
     b.textContent = text;
     b.addEventListener("click", ()=>{ conModelClose(); pickConModel(value); });
     menu.appendChild(b);
@@ -1255,25 +1248,37 @@ async function pickConModel(v){
     if(state.current === id) refreshConModel(s);
   }
 }
-$id("conModelBtn").addEventListener("click", ()=>{
-  const menu = $id("conModelMenu");
-  menu.hidden = !menu.hidden;
-  sfx[menu.hidden ? "close" : "open"]();
-});
-/* outside dismissal on pointerdown in the capture phase : a click event
-   never fires when the transcript re-render swaps the pressed node out
-   between mousedown and mouseup (the bound session streams while the
-   menu is open), so pointerdown is the reliable dismissal signal */
-function conModelMaybeClose(e){
-  const drop = $id("conModelDrop");
-  if(!drop.hidden && !drop.contains(e.target)) conModelClose();
+/* dismissal wiring runs once, guarded, at the window level in the
+   capture phase : capture fires before any handler that stops
+   propagation, and pointerdown survives the transcript re-render
+   swapping the pressed node out between mousedown and mouseup (the
+   click event then never fires). Any key, tab switch, or scroll
+   outside the dropdown also dismisses. */
+if(!window.__conModelWired){
+  window.__conModelWired = true;
+  const conModelMaybeClose = e=>{
+    const menu = $id("conModelMenu");
+    if(!menu || menu.hidden) return;
+    if(e && e.type !== "keydown" && e.type !== "blur"){
+      const drop = $id("conModelDrop");
+      if(drop && drop.contains(e.target)) return;
+    }
+    conModelClose();
+  };
+  $id("conModelBtn").addEventListener("click", ()=>{
+    const menu = $id("conModelMenu");
+    menu.hidden = !menu.hidden;
+    try{ sfx[menu.hidden ? "close" : "open"](); }catch(e){}
+  });
+  ["pointerdown","mousedown","click"].forEach(t=>{
+    window.addEventListener(t, conModelMaybeClose, true);
+    document.addEventListener(t, conModelMaybeClose, true);
+  });
+  document.addEventListener("keydown", conModelMaybeClose, true);
+  document.addEventListener("scroll", conModelMaybeClose, true);
+  window.addEventListener("blur", conModelMaybeClose);
+  document.addEventListener("visibilitychange", ()=>{ if(document.hidden) conModelClose(); });
 }
-document.addEventListener("pointerdown", conModelMaybeClose, true);
-document.addEventListener("click", conModelMaybeClose, true);
-/* scroll does not bubble but does capture : wheeling the transcript
-   away also dismisses the menu (its own scrollbar is inside the drop) */
-document.addEventListener("scroll", conModelMaybeClose, true);
-document.addEventListener("keydown", e=>{ if(e.key === "Escape") conModelClose(); });
 async function pollTranscript(){
   state.lastPollAt = Date.now();
   if(!state.current) return;
