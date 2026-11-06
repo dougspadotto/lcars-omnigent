@@ -1260,10 +1260,19 @@ $id("conModelBtn").addEventListener("click", ()=>{
   menu.hidden = !menu.hidden;
   sfx[menu.hidden ? "close" : "open"]();
 });
-document.addEventListener("click", e=>{
+/* outside dismissal on pointerdown in the capture phase : a click event
+   never fires when the transcript re-render swaps the pressed node out
+   between mousedown and mouseup (the bound session streams while the
+   menu is open), so pointerdown is the reliable dismissal signal */
+function conModelMaybeClose(e){
   const drop = $id("conModelDrop");
   if(!drop.hidden && !drop.contains(e.target)) conModelClose();
-});
+}
+document.addEventListener("pointerdown", conModelMaybeClose, true);
+document.addEventListener("click", conModelMaybeClose, true);
+/* scroll does not bubble but does capture : wheeling the transcript
+   away also dismisses the menu (its own scrollbar is inside the drop) */
+document.addEventListener("scroll", conModelMaybeClose, true);
 document.addEventListener("keydown", e=>{ if(e.key === "Escape") conModelClose(); });
 async function pollTranscript(){
   state.lastPollAt = Date.now();
