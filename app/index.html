@@ -283,16 +283,36 @@ body.railhidden #railTab{display:block}
 .consolehead{display:flex;align-items:center;gap:12px;padding-bottom:8px;border-bottom:2px solid #333}
 .consolehead .ct{font-weight:700;font-size:18px;color:var(--peach);letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .consolehead .cs{font-size:13px;color:#6f77a0;font-weight:500}
-.consolehead select.conmodel{
-  appearance:none;-webkit-appearance:none;
+.cmdrop{position:relative}
+.consolehead .conmodel{
   background:var(--iceblue);color:#000;border:none;border-radius:11px;
   font-family:var(--font);font-weight:700;font-size:12px;letter-spacing:.08em;
-  padding:4px 22px 2px 12px;cursor:pointer;max-width:280px;
+  padding:4px 24px 2px 12px;cursor:pointer;max-width:320px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   background-image:linear-gradient(45deg,transparent 50%,#000 50%),linear-gradient(135deg,#000 50%,transparent 50%);
-  background-position:calc(100% - 13px) 10px,calc(100% - 8px) 10px;
+  background-position:calc(100% - 14px) 9px,calc(100% - 9px) 9px;
   background-size:5px 5px,5px 5px;background-repeat:no-repeat;
 }
-.consolehead select.conmodel:disabled{opacity:.45;cursor:wait}
+.consolehead .conmodel:disabled{opacity:.45;cursor:wait}
+.conmenu{
+  position:absolute;top:calc(100% + 4px);right:0;min-width:360px;max-width:440px;
+  max-height:340px;overflow-y:auto;background:#000;
+  border:2px solid var(--iceblue);border-radius:14px;padding:6px;z-index:60;
+  display:flex;flex-direction:column;gap:3px;box-shadow:0 10px 28px rgba(0,0,0,.65);
+}
+.conmenu::-webkit-scrollbar{width:8px}
+.conmenu::-webkit-scrollbar-thumb{background:var(--iceblue);border-radius:4px}
+.conmenu .cmi{
+  font-family:var(--font);font-weight:700;font-size:12px;letter-spacing:.06em;color:#000;
+  background:var(--iceblue);border:none;border-radius:10px;
+  padding:5px 12px 3px;cursor:pointer;text-align:left;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.conmenu .cmi.claude{background:var(--peach)}
+.conmenu .cmi.route{background:var(--tangerine)}
+.conmenu .cmi:hover{filter:brightness(1.2)}
+.conmenu .cmi.sel{outline:3px solid #fff;outline-offset:-3px}
+.conhead{font-size:11px;font-weight:700;letter-spacing:.12em;color:var(--periwinkle);padding:2px 4px 1px}
 .consolehead .sp{flex:1}
 .purgebtn{
   font-family:var(--font);font-weight:700;font-size:12px;color:#000;background:var(--coral);
@@ -620,7 +640,10 @@ details.exec .targ{
             <div class="consolehead">
               <span class="ct" id="conTitle" title="CLICK TO RENAME">NO SESSION BOUND</span>
               <span class="cs" id="conStatus"></span>
-              <select id="conModel" class="conmodel" title="SWITCH MODEL : APPLIES FROM THE NEXT TURN" hidden></select>
+              <div class="cmdrop" id="conModelDrop" hidden>
+                <button class="conmodel" id="conModelBtn" title="SWITCH MODEL : APPLIES FROM THE NEXT TURN"></button>
+                <div class="conmenu" id="conModelMenu" hidden></div>
+              </div>
               <span class="sp"></span>
               <button class="purgebtn" id="renameBtn" style="background:var(--periwinkle)">RENAME</button>
               <button class="purgebtn" id="purgeBtn">PURGE</button>
@@ -1029,7 +1052,7 @@ function renderSessions(){
           api(`/sessions/${s.id}`, {method:"DELETE"})
             .then(()=>{
               sysLine("SESSION DELETED : " + short(s.id));
-              if(state.current === s.id){ state.current = null; stopLive(); $id("sessConsole").style.display = "none"; $id("sessStandby").style.display = "flex"; $id("conTitle").textContent = "NO SESSION BOUND"; $id("conModel").hidden = true; }
+              if(state.current === s.id){ state.current = null; stopLive(); $id("sessConsole").style.display = "none"; $id("sessStandby").style.display = "flex"; $id("conTitle").textContent = "NO SESSION BOUND"; $id("conModelDrop").hidden = true; }
               refreshSessions();
             })
             .catch(err=>{ sysLine("DELETE FAILED : " + err.message); sfx.error(); });
@@ -1149,48 +1172,80 @@ function setConStatus(s){
 /* ---------- in session model switch ---------- */
 /* the sessions list omits harness and model_override, so the switcher
    reads them from the session detail : catalog per harness is cached
-   against the host's model-options answer */
+   against the host's model-options answer. The open menu is custom
+   (a native select popup cannot carry LCARS styling). */
 const modelCats = {};
+let conModelHarness = "claude-native", conModelRouted = false;
+function conModelClose(){ $id("conModelMenu").hidden = true; }
+function conModelLabel(v){
+  const models = modelCats[conModelHarness] || [];
+  if(!v) return conModelRouted ? "ROUTER PICKS (SMART ROUTING)" : "CLI DEFAULT";
+  const m = models.find(x=>x.id===v);
+  return m ? modelText(m) : v;
+}
+function conModelClass(v){
+  if(!v) return conModelRouted ? "route" : "";
+  return /^system\.ai\.claude-/.test(v) ? "claude" : "";
+}
 async function refreshConModel(s){
-  const el = $id("conModel");
-  if(!s){ el.hidden = true; return; }
-  el.hidden = false;
-  el.disabled = true;
-  let cur = "", harness = "claude-native";
+  const drop = $id("conModelDrop");
+  if(!s){ drop.hidden = true; conModelClose(); return; }
+  drop.hidden = false;
+  const btn = $id("conModelBtn");
+  btn.disabled = true; btn.textContent = "MODEL …";
+  let cur = "";
+  conModelRouted = false;
+  conModelHarness = "claude-native";
   try{
     const d = await api(`/sessions/${s.id}`);
     cur = d.model_override || "";
-    harness = d.harness || "claude-native";
+    conModelHarness = d.harness || "claude-native";
+    /* the routing flag can ride the mode field or the labels : either
+       means the router is steering while no model pin is set */
+    conModelRouted = d.cost_control_mode_override === "on" ||
+      Object.keys(d.labels||{}).some(k => k === "omnigent.smart_routing" || k.startsWith("omnigent.routing."));
   }catch(e){}
   if(state.current !== s.id) return;
-  if(!modelCats[harness]){
+  if(!modelCats[conModelHarness]){
     try{
-      const m = await api(`/hosts/${state.hostId}/harnesses/${harness}/model-options`);
-      modelCats[harness] = m.models || [];
-    }catch(e){ modelCats[harness] = []; }
+      const m = await api(`/hosts/${state.hostId}/harnesses/${conModelHarness}/model-options`);
+      modelCats[conModelHarness] = m.models || [];
+    }catch(e){ modelCats[conModelHarness] = []; }
   }
-  const opts = [{value:"", text:"MODEL : HARNESS DEFAULT"}];
-  (modelCats[harness]||[]).forEach(m=>opts.push({value:m.id, text:modelText(m)}));
-  el.innerHTML = "";
-  opts.forEach(o=>{
-    const op = document.createElement("option");
-    op.value = o.value; op.textContent = o.text;
-    el.appendChild(op);
-  });
-  el.value = cur;
-  el.disabled = false;
+  const models = modelCats[conModelHarness] || [];
+  const menu = $id("conModelMenu");
+  menu.innerHTML = "";
+  const mkItem = (value, text, head)=>{
+    if(head){
+      const h = document.createElement("div");
+      h.className = "conhead"; h.textContent = head;
+      menu.appendChild(h);
+      return;
+    }
+    const b = document.createElement("button");
+    b.type = "button";
+    const cls = conModelClass(value);
+    b.className = "cmi" + (cls ? " " + cls : "") + (value === cur ? " sel" : "");
+    b.textContent = text;
+    b.addEventListener("click", ()=>{ conModelClose(); pickConModel(value); });
+    menu.appendChild(b);
+  };
+  mkItem(null, null, "MODEL");
+  mkItem("", conModelRouted ? "ROUTER PICKS (SMART ROUTING)" : "CLI DEFAULT");
+  models.forEach(m=>mkItem(m.id, modelText(m)));
+  btn.textContent = "MODEL : " + conModelLabel(cur);
+  btn.disabled = false;
 }
-$id("conModel").addEventListener("change", async ()=>{
-  const el = $id("conModel");
-  const v = el.value;
+async function pickConModel(v){
   const id = state.current;
   if(!id) return;
-  el.disabled = true;
+  const btn = $id("conModelBtn");
+  btn.disabled = true;
   try{
     /* the clear alias ("default") restores the harness pick : the server
        wakes a sleeping runner and forwards the change to a live one */
     await api(`/sessions/${id}`, {method:"PATCH", body: JSON.stringify({model_override: v || "default"})});
-    sysLine("MODEL SET : " + (v ? v : "HARNESS DEFAULT") + " : " + short(id));
+    sysLine("MODEL SET : " + (v ? v : (conModelRouted ? "ROUTER PICKS" : "HARNESS DEFAULT")) + " : " + short(id));
     sfx.select();
   }catch(e){
     sysLine("MODEL SWITCH FAILED : " + e.message);
@@ -1199,7 +1254,17 @@ $id("conModel").addEventListener("change", async ()=>{
     const s = state.sessions.find(x=>x.id===id);
     if(state.current === id) refreshConModel(s);
   }
+}
+$id("conModelBtn").addEventListener("click", ()=>{
+  const menu = $id("conModelMenu");
+  menu.hidden = !menu.hidden;
+  sfx[menu.hidden ? "close" : "open"]();
 });
+document.addEventListener("click", e=>{
+  const drop = $id("conModelDrop");
+  if(!drop.hidden && !drop.contains(e.target)) conModelClose();
+});
+document.addEventListener("keydown", e=>{ if(e.key === "Escape") conModelClose(); });
 async function pollTranscript(){
   state.lastPollAt = Date.now();
   if(!state.current) return;
@@ -1561,7 +1626,7 @@ async function purgeCurrent(){
     stopLive();
     state.current = null;
     $id("conTitle").textContent = "NO SESSION BOUND";
-    $id("conModel").hidden = true;
+    $id("conModelDrop").hidden = true;
     await refreshSessions();
   }catch(e){
     sysLine("PURGE FAILED : " + e.message);
