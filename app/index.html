@@ -283,6 +283,16 @@ body.railhidden #railTab{display:block}
 .consolehead{display:flex;align-items:center;gap:12px;padding-bottom:8px;border-bottom:2px solid #333}
 .consolehead .ct{font-weight:700;font-size:18px;color:var(--peach);letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .consolehead .cs{font-size:13px;color:#6f77a0;font-weight:500}
+.consolehead select.conmodel{
+  appearance:none;-webkit-appearance:none;
+  background:var(--iceblue);color:#000;border:none;border-radius:11px;
+  font-family:var(--font);font-weight:700;font-size:12px;letter-spacing:.08em;
+  padding:4px 22px 2px 12px;cursor:pointer;max-width:280px;
+  background-image:linear-gradient(45deg,transparent 50%,#000 50%),linear-gradient(135deg,#000 50%,transparent 50%);
+  background-position:calc(100% - 13px) 10px,calc(100% - 8px) 10px;
+  background-size:5px 5px,5px 5px;background-repeat:no-repeat;
+}
+.consolehead select.conmodel:disabled{opacity:.45;cursor:wait}
 .consolehead .sp{flex:1}
 .purgebtn{
   font-family:var(--font);font-weight:700;font-size:12px;color:#000;background:var(--coral);
@@ -610,6 +620,7 @@ details.exec .targ{
             <div class="consolehead">
               <span class="ct" id="conTitle" title="CLICK TO RENAME">NO SESSION BOUND</span>
               <span class="cs" id="conStatus"></span>
+              <select id="conModel" class="conmodel" title="SWITCH MODEL : APPLIES FROM THE NEXT TURN" hidden></select>
               <span class="sp"></span>
               <button class="purgebtn" id="renameBtn" style="background:var(--periwinkle)">RENAME</button>
               <button class="purgebtn" id="purgeBtn">PURGE</button>
@@ -1018,7 +1029,7 @@ function renderSessions(){
           api(`/sessions/${s.id}`, {method:"DELETE"})
             .then(()=>{
               sysLine("SESSION DELETED : " + short(s.id));
-              if(state.current === s.id){ state.current = null; stopLive(); $id("sessConsole").style.display = "none"; $id("sessStandby").style.display = "flex"; $id("conTitle").textContent = "NO SESSION BOUND"; }
+              if(state.current === s.id){ state.current = null; stopLive(); $id("sessConsole").style.display = "none"; $id("sessStandby").style.display = "flex"; $id("conTitle").textContent = "NO SESSION BOUND"; $id("conModel").hidden = true; }
               refreshSessions();
             })
             .catch(err=>{ sysLine("DELETE FAILED : " + err.message); sfx.error(); });
@@ -1110,6 +1121,7 @@ async function bindSession(id){
   $id("sessConsole").style.display = "flex";
   $id("conTitle").textContent = (s.title || "(untitled)") + " : " + short(id);
   setConStatus(s);
+  refreshConModel(s);
   $id("msgs").innerHTML = `<div class="msg"><div class="who system">SYSTEM</div><div class="body">LOADING TRANSCRIPT&#8230;</div></div>`;
   state.lastItems = new Map();
   state.pendingUser = null;
@@ -1133,6 +1145,61 @@ function setConStatus(s){
   $id("conStatus").textContent = statusLine(s);
   updateProcCard();
 }
+
+/* ---------- in session model switch ---------- */
+/* the sessions list omits harness and model_override, so the switcher
+   reads them from the session detail : catalog per harness is cached
+   against the host's model-options answer */
+const modelCats = {};
+async function refreshConModel(s){
+  const el = $id("conModel");
+  if(!s){ el.hidden = true; return; }
+  el.hidden = false;
+  el.disabled = true;
+  let cur = "", harness = "claude-native";
+  try{
+    const d = await api(`/sessions/${s.id}`);
+    cur = d.model_override || "";
+    harness = d.harness || "claude-native";
+  }catch(e){}
+  if(state.current !== s.id) return;
+  if(!modelCats[harness]){
+    try{
+      const m = await api(`/hosts/${state.hostId}/harnesses/${harness}/model-options`);
+      modelCats[harness] = m.models || [];
+    }catch(e){ modelCats[harness] = []; }
+  }
+  const opts = [{value:"", text:"MODEL : HARNESS DEFAULT"}];
+  (modelCats[harness]||[]).forEach(m=>opts.push({value:m.id, text:modelText(m)}));
+  el.innerHTML = "";
+  opts.forEach(o=>{
+    const op = document.createElement("option");
+    op.value = o.value; op.textContent = o.text;
+    el.appendChild(op);
+  });
+  el.value = cur;
+  el.disabled = false;
+}
+$id("conModel").addEventListener("change", async ()=>{
+  const el = $id("conModel");
+  const v = el.value;
+  const id = state.current;
+  if(!id) return;
+  el.disabled = true;
+  try{
+    /* the clear alias ("default") restores the harness pick : the server
+       wakes a sleeping runner and forwards the change to a live one */
+    await api(`/sessions/${id}`, {method:"PATCH", body: JSON.stringify({model_override: v || "default"})});
+    sysLine("MODEL SET : " + (v ? v : "HARNESS DEFAULT") + " : " + short(id));
+    sfx.select();
+  }catch(e){
+    sysLine("MODEL SWITCH FAILED : " + e.message);
+    sfx.error();
+  }finally{
+    const s = state.sessions.find(x=>x.id===id);
+    if(state.current === id) refreshConModel(s);
+  }
+});
 async function pollTranscript(){
   state.lastPollAt = Date.now();
   if(!state.current) return;
@@ -1494,6 +1561,7 @@ async function purgeCurrent(){
     stopLive();
     state.current = null;
     $id("conTitle").textContent = "NO SESSION BOUND";
+    $id("conModel").hidden = true;
     await refreshSessions();
   }catch(e){
     sysLine("PURGE FAILED : " + e.message);
