@@ -1024,7 +1024,7 @@ function renderSessions(){
         const b = document.createElement("button");
         b.className = "sessItem" + (state.current===s.id ? " sel" : "");
         b.innerHTML = statusDot(s.status) + esc(s.title || "("+short(s.id)+")");
-        b.title = `${s.title||""} : ${s.agent_name||""} : ${shortWs(wsOf(s))}`;
+        b.title = `${s.title||""} : ${agentDisplay(s.agent_name)||"UNBOUND"} : ${shortWs(wsOf(s))}`;
         b.addEventListener("click", ()=>bindSession(s.id));
         /* drag the row onto a folder header to file it, onto UNFILED to
            unfile it, or onto ACTIVE to hold it there */
@@ -1162,7 +1162,7 @@ function statusLine(s, prefix){
   /* session cost rides only on the running session's own header */
   const c = s && s.status === "running" ? costOf(s) : null;
   return (prefix || (s && s.status ? s.status.toUpperCase() : "")) +
-    " : AGENT " + ((s && s.agent_name) || "unbound") +
+    " : AGENT " + (s && s.agent_name ? agentDisplay(s.agent_name) : "UNBOUND") +
     " : " + shortWs(wsOf(s)) +
     (c != null ? " : " + money(c) : "");
 }
@@ -1224,6 +1224,7 @@ async function refreshConModel(s){
     b.type = "button";
     b.className = "cmi" + (value === cur ? " sel" : "");
     b.textContent = text;
+    if(value) b.title = value;
     b.addEventListener("click", ()=>{ conModelClose(); pickConModel(value); });
     menu.appendChild(b);
   };
@@ -1242,7 +1243,7 @@ async function pickConModel(v){
     /* the clear alias ("default") restores the harness pick : the server
        wakes a sleeping runner and forwards the change to a live one */
     await api(`/sessions/${id}`, {method:"PATCH", body: JSON.stringify({model_override: v || "default"})});
-    sysLine("MODEL SET : " + (v ? v : (conModelRouted ? "ROUTER PICKS" : "HARNESS DEFAULT")) + " : " + short(id));
+    sysLine("MODEL SET : " + (v ? conModelLabel(v) : (conModelRouted ? "ROUTER PICKS" : "HARNESS DEFAULT")) + " : " + short(id));
     sfx.select();
   }catch(e){
     sysLine("MODEL SWITCH FAILED : " + e.message);
@@ -1775,7 +1776,7 @@ function renderAgents(){
     const d = document.createElement("div");
     d.className = "acard";
     d.innerHTML =
-      `<div class="ahead" style="background:${c}"><span>${esc((a.name||a.id).toUpperCase())}</span><span class="v">${esc(a.harness||"")}</span></div>`+
+      `<div class="ahead" style="background:${c}" title="${esc(a.name||a.id)}"><span>${esc(agentDisplay(a.name||a.id))}</span><span class="v">${esc(a.harness||"")}</span></div>`+
       `<div class="abody">`+
       `<div class="row"><span class="k">SOURCE</span><span class="v2">${a.builtin ? "BUILT-IN" : "CUSTOM"}</span></div>`+
       `<div class="row"><span class="k">MCP SERVERS</span><span class="v2">${(a.mcp_servers||[]).length}</span></div>`+
@@ -1879,16 +1880,53 @@ function fillSelect(id, opts, value, onpick){
   el.value = value;
   el.onchange = ()=>{ sfx.select(); onpick(el.value); };
 }
+/* agent names as the Omnigent interface shows them : the official
+   mapping for built in agents, and a tidy fallback (ui and native
+   suffixes stripped, uppercased) so custom names still read as a
+   label rather than an identifier */
+const AGENT_NAMES = {
+  "claude-native-ui": "CLAUDE CODE",
+  "codex-native-ui": "CODEX",
+  "opencode-native-ui": "OPENCODE",
+  "devin-native-ui": "DEVIN",
+  "cursor-native-ui": "CURSOR",
+  "pi-native-ui": "PI",
+  "kiro-native-ui": "KIRO",
+  "antigravity-native-ui": "ANTIGRAVITY",
+  "goose-native-ui": "GOOSE",
+  "qwen-native-ui": "QWEN CODE",
+  "kimi-native-ui": "KIMI",
+  "hermes-native-ui": "HERMES",
+  "debby": "DEBBY",
+  "polly": "POLLY",
+};
+function agentDisplay(name){
+  if(!name) return "";
+  if(AGENT_NAMES[name]) return AGENT_NAMES[name];
+  return prettifyName(String(name).replace(/-(native-)?ui$/,"").replace(/-native$/,""));
+}
+/* identifier to label : GLM-5-3 reads GLM 5.3, CLAUDE-CC reads
+   CLAUDE CC, digits joined by a hyphen become a version dot */
+function prettifyName(s){
+  return String(s).toUpperCase().replace(/(\d)-(?=\d)/g, "$1.").replace(/-/g," ");
+}
+/* a catalog row without a displayName still deserves a label :
+   system.ai.claude-opus-4-8[1m] reads as CLAUDE OPUS 4.8 (1M) */
+function prettyModelId(id){
+  let s = String(id).replace(/^system\.ai\./,"");
+  const ctx = s.match(/\[(\w+)\]$/);
+  if(ctx) s = s.slice(0, -ctx[0].length);
+  return prettifyName(s) + (ctx ? " (" + ctx[1].toUpperCase() + ")" : "");
+}
 function modelText(m){
-  const name = (m.displayName && m.displayName !== m.id) ? m.displayName.toUpperCase() : "";
-  const short = String(m.id).replace(/^system\.ai\./,"");
-  return name ? name + " : " + short : short;
+  if(m.displayName && m.displayName !== m.id) return m.displayName.toUpperCase();
+  return prettyModelId(m.id);
 }
 function routeSub(){ $id("pickRoute").hidden = selModel !== ROUTE_MODEL; }
 function buildAgentSelect(){
   const opts = state.agents.map(a=>({
     value: a.name,
-    text: a.name.toUpperCase() + " : " + (a.builtin?"BUILT-IN":"CUSTOM") + " : " + (a.harness||"") + (a.mcp_servers&&a.mcp_servers.length ? ` : ${a.mcp_servers.length} MCP` : ""),
+    text: agentDisplay(a.name) + " : " + (a.builtin?"BUILT-IN":"CUSTOM") + " : " + (a.harness||"") + (a.mcp_servers&&a.mcp_servers.length ? ` : ${a.mcp_servers.length} MCP` : ""),
   }));
   if(!opts.length) opts.push({value:"", text:"NO AGENTS"});
   fillSelect("pickAgents", opts, selAgent, v=>{ selAgent=v; loadPickerModels(); });
@@ -1997,7 +2035,7 @@ $id("mLaunch").addEventListener("click", async ()=>{
     setTimeout(()=>refreshSessions(), 5000);
     state.forceScroll = true;
     sfx.launched();
-    sysLine(launchNote + " : " + short(id) + " : AGENT " + selAgent.toUpperCase() + " : WS " + ws);
+    sysLine(launchNote + " : " + short(id) + " : AGENT " + agentDisplay(selAgent) + " : WS " + ws);
   }catch(e){
     sysLine("LAUNCH FAILED : " + e.message);
     sfx.error();
