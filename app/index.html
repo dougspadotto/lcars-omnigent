@@ -500,8 +500,18 @@ details.exec .targ{
 }
 .lcsel:hover{filter:brightness(1.15)}
 .lcsel:focus{outline:3px solid #fff;outline-offset:-3px}
-.lcsel option,.lcsel optgroup{background:#0a0e18;color:#fff;font-family:var(--mono);font-size:12.5px;font-weight:500;text-transform:none}
-.lcsel option.opt-route{color:var(--tangerine);font-weight:700}
+/* picker dropdowns : same visual as the header model menu, built as a
+   button + floating menu instead of a native select */
+.lcdd{position:relative;min-width:0}
+.lcdd .lcsel{
+  text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  padding-right:26px;
+  background-image:linear-gradient(45deg,transparent 50%,#000 50%),linear-gradient(135deg,#000 50%,transparent 50%);
+  background-position:calc(100% - 14px) 11px,calc(100% - 9px) 11px;
+  background-size:5px 5px,5px 5px;background-repeat:no-repeat;
+}
+.lcdd .conmenu{max-width:360px;max-height:250px}
+.lcdd .conmenu .cmi{flex:none}
 .lctext{
   background:#0a0e18;border:2px solid var(--iceblue);border-radius:12px;color:#fff;
   font-family:var(--mono);font-size:12.5px;line-height:1.45;padding:6px 10px;width:100%;
@@ -723,21 +733,21 @@ details.exec .targ{
     <div class="mbody">
       <div class="mcol">
         <div class="flabel">AGENT</div>
-        <select id="pickAgents" class="lcsel"></select>
+        <div id="pickAgents" class="lcdd"><button type="button" class="lcsel"></button><div class="conmenu" hidden></div></div>
       </div>
       <div class="mcol">
         <div class="flabel">MODEL</div>
-        <select id="pickModels" class="lcsel"></select>
+        <div id="pickModels" class="lcdd"><button type="button" class="lcsel"></button><div class="conmenu" hidden></div></div>
         <div id="pickRoute" class="routesub" hidden>
           <div class="flabel">HARNESS : WHO DECIDES</div>
-          <select id="pickRouteHarness" class="lcsel"></select>
+          <div id="pickRouteHarness" class="lcdd"><button type="button" class="lcsel"></button><div class="conmenu" hidden></div></div>
           <div class="flabel">ROUTING PROMPT : OPTIONAL</div>
           <textarea id="pickRouteMsg" class="lctext" rows="3" placeholder="FIRST MESSAGE THE ROUTER READS : LEAVE BLANK AND THE MODEL IS PICKED IN SESSION"></textarea>
         </div>
       </div>
       <div class="mcol">
         <div class="flabel">REASONING EFFORT</div>
-        <select id="pickEffort" class="lcsel"></select>
+        <div id="pickEffort" class="lcdd"><button type="button" class="lcsel"></button><div class="conmenu" hidden></div></div>
       </div>
     </div>
     <div class="mfoot">
@@ -1869,16 +1879,59 @@ function expandWorkspace(ws){
 
 function fillSelect(id, opts, value, onpick){
   const el = $id(id);
-  el.innerHTML = "";
+  el.dataset.value = value;
+  const btn = el.querySelector(".lcsel");
+  const menu = el.querySelector(".conmenu");
+  const cur = opts.find(o=>o.value===value) || opts[0] || {text:""};
+  btn.textContent = cur.text;
+  if(cur.value) btn.title = cur.value; else btn.removeAttribute("title");
+  menu.hidden = true;
+  menu.innerHTML = "";
   opts.forEach(o=>{
-    const op = document.createElement("option");
-    op.value = o.value;
-    op.textContent = o.text;
-    if(o.cls) op.className = o.cls;
-    el.appendChild(op);
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "cmi" + (o.value===value ? " sel" : "");
+    b.textContent = o.text;
+    if(o.value) b.title = o.value;
+    b.addEventListener("click", ()=>{
+      menu.hidden = true;
+      el.dataset.value = o.value;
+      btn.textContent = o.text;
+      if(o.value) btn.title = o.value; else btn.removeAttribute("title");
+      try{ sfx.select(); }catch(e){}
+      onpick(o.value);
+    });
+    menu.appendChild(b);
   });
-  el.value = value;
-  el.onchange = ()=>{ sfx.select(); onpick(el.value); };
+  btn.onclick = ()=>{
+    menu.hidden = !menu.hidden;
+    if(!menu.hidden){
+      /* the modal clips absolutely positioned children : anchor the open
+         menu to the viewport so it can float over the footer and columns */
+      const r = btn.getBoundingClientRect();
+      menu.style.position = "fixed";
+      menu.style.top = (r.bottom + 4) + "px";
+      menu.style.left = r.left + "px";
+      menu.style.minWidth = r.width + "px";
+    }
+    try{ sfx[menu.hidden ? "close" : "open"](); }catch(e){}
+  };
+}
+/* close any open picker menu when clicking elsewhere : capture phase so a
+   click that lands on a transcript re-render still reaches it */
+if(!window.__lcddWired){
+  window.__lcddWired = true;
+  document.addEventListener("pointerdown", e=>{
+    document.querySelectorAll(".lcdd").forEach(d=>{
+      if(d.contains(e.target)) return;
+      const m = d.querySelector(".conmenu");
+      if(m) m.hidden = true;
+    });
+  }, true);
+  /* fixed-position menus do not follow the button : close on any scroll */
+  window.addEventListener("scroll", ()=>{
+    document.querySelectorAll(".lcdd .conmenu").forEach(m=>{ m.hidden = true; });
+  }, true);
 }
 /* agent names as the Omnigent interface shows them : the official
    mapping for built in agents, and a tidy fallback (ui and native
