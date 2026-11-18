@@ -99,6 +99,18 @@ body{
 }
 .header .sd.budget{color:var(--tangerine);font-size:15px}
 .header .sub{font-size:13px;font-weight:500;opacity:.75;white-space:nowrap;flex:0 0 auto}
+/* host status doubles as the reconnect control : click to relink the
+   bridge after the local Omnigent server restarts */
+.header .hostbtn{
+  background:var(--black);color:var(--peach);
+  font-family:var(--font);font-weight:700;font-size:13px;letter-spacing:.06em;
+  border:none;border-radius:16px;padding:6px 14px 4px;cursor:pointer;
+  white-space:nowrap;flex:0 0 auto;
+}
+.header .hostbtn::before{content:"\25C9  "}
+.header .hostbtn:hover{filter:brightness(1.25)}
+.header .hostbtn.offline{background:var(--red);color:#000;animation:blink 1.2s steps(1) infinite}
+.header .hostbtn.linking{opacity:.7}
 .newbtn{
   background:var(--tangerine);color:#000;border:none;border-radius:16px;
   font-family:var(--font);font-weight:700;font-size:16px;letter-spacing:.06em;
@@ -595,7 +607,7 @@ details.exec .targ{
     <span class="title" id="hdrTitle">OMNIGENT ACCESS : SESSIONS</span>
     <span class="spacer"></span>
     <button class="newbtn" id="newBtn">NEW SESSION</button>
-    <span class="sub" id="hdrSub">CONNECTING&#8230;</span>
+    <button class="hostbtn" id="hdrSub" title="RECONNECT TO OMNIGENT SERVER">CONNECTING&#8230;</button>
     <span class="sd budget" id="budget" title="ISAAC BUDGET : MONTHLY SPENT/LIMIT (PERCENT) AND DAILY GUARD LEFT">AI &#8212;</span>
     <span class="sd" id="stardate">STARDATE &#8212;&#8212;</span>
   </div>
@@ -879,21 +891,55 @@ const sfx = {
   sndOff:   ()=>tone(300),                        // audio disabled
 };
 
-/* ---------- boot ---------- */
-async function boot(){
+/* ---------- boot / reconnect ---------- */
+/* one relink path for the first boot and every manual reconnect : pulls
+   the full state, and when the bridge comes back with the same bound
+   session still present it re-attaches the console so the operator does
+   not lose their place after a server restart */
+async function reconnect(){
+  if(state.linking) return;
+  state.linking = true;
+  const btn = $id("hdrSub");
+  btn.classList.add("linking"); btn.classList.remove("offline");
+  btn.textContent = "LINKING…";
+  $id("ftrState").textContent = "OMNIGENT BRIDGE : LINKING…";
+  const wasBound = state.current;
   try{
     await refreshAll();
     state.offline = false;
     $id("ftrState").textContent = "ACCESS GRANTED : OMNIGENT BRIDGE";
-    $id("hdrSub").textContent = state.host ? ("HOST " + (state.host.name||"LOCAL").toUpperCase()) : "HOST LOCAL";
+    btn.classList.remove("linking");
+    btn.textContent = state.host ? ("HOST " + (state.host.name||"LOCAL").toUpperCase()) : "HOST LOCAL";
+    /* re-attach the console if the bound session survived the restart */
+    if(wasBound && state.sessions.some(s=>s.id===wasBound)) bindSession(wasBound);
+    sfx.bind();
   }catch(e){
     state.offline = true;
     $id("ftrState").textContent = "BRIDGE DOWN : " + e.message;
-    $id("hdrSub").textContent = "OFFLINE";
+    btn.classList.remove("linking");
+    btn.classList.add("offline");
+    btn.textContent = "OFFLINE : RECONNECT";
     $id("sessCnt").textContent = "OMNIGENT SERVER UNREACHABLE ON 127.0.0.1:6767";
+    sfx.error();
+  }finally{
+    state.linking = false;
   }
-  setInterval(() => { if(!state.offline) refreshSessions().catch(()=>{}); }, 15000);
 }
+async function boot(){
+  await reconnect();
+  /* the poll also watches the link : a failed refresh once the bridge is
+     up flips to OFFLINE so the reconnect control lights up on its own */
+  setInterval(() => {
+    if(state.offline || state.linking) return;
+    refreshSessions().catch(()=>{
+      state.offline = true;
+      const btn = $id("hdrSub");
+      btn.classList.add("offline"); btn.textContent = "OFFLINE : RECONNECT";
+      $id("ftrState").textContent = "BRIDGE DOWN : LINK LOST";
+    });
+  }, 15000);
+}
+$id("hdrSub").addEventListener("click", reconnect);
 
 async function refreshAll(){
   const [sessions, usage, agents, hosts, projects] = await Promise.all([
